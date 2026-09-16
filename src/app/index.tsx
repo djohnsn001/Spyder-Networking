@@ -1,61 +1,46 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
+function getInitials(email: string) {
+  return email.slice(0, 2).toUpperCase();
 }
 
 export default function HomeScreen() {
+  const { session } = useAuth();
+  const email = session?.user.email ?? '';
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedView type="backgroundSelected" style={styles.avatar}>
+            <ThemedText type="subtitle">{getInitials(email)}</ThemedText>
+          </ThemedView>
+
+          <ThemedText type="subtitle" style={styles.name}>
+            {email}
           </ThemedText>
+
+          <Pressable
+            onPress={() => supabase.auth.signOut()}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: '#e56b6f' },
+              pressed && styles.buttonPressed,
+            ]}>
+            <ThemedText type="smallBold" style={styles.buttonLabel}>
+              Log out
+            </ThemedText>
+          </Pressable>
         </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
       </SafeAreaView>
     </ThemedView>
   );
@@ -69,30 +54,42 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
     paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
   },
-  heroSection: {
+  card: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.five,
+    borderRadius: Spacing.four,
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
   },
-  title: {
+  name: {
     textAlign: 'center',
   },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
+  button: {
+    marginTop: Spacing.two,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.five,
     borderRadius: Spacing.four,
+    alignItems: 'center',
+    minWidth: 180,
+  },
+  buttonPressed: {
+    opacity: 0.8,
+  },
+  buttonLabel: {
+    color: '#ffffff',
   },
 });
