@@ -1,3 +1,4 @@
+import { Link, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,18 +19,14 @@ import { supabase } from '@/lib/supabase';
 const AccentColor = '#3c87f7';
 const ErrorColor = '#d1453b';
 
-type Mode = 'signIn' | 'signUp';
-
-export function LoginScreen() {
+export default function LoginScreen() {
   const theme = useTheme();
-  const [mode, setMode] = useState<Mode>('signIn');
+  const params = useLocalSearchParams<{ info?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
-
-  const isSignUp = mode === 'signUp';
+  const [infoMessage, setInfoMessage] = useState<string | null>(params.info ?? null);
 
   async function handleSubmit() {
     setErrorMessage(null);
@@ -43,35 +40,16 @@ export function LoginScreen() {
 
     setIsSubmitting(true);
     try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email: trimmedEmail,
-          password,
-        });
-        if (error) throw error;
-
-        if (!data.session) {
-          setInfoMessage('Check your email to confirm your account, then log in.');
-          setMode('signIn');
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: trimmedEmail,
-          password,
-        });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+      if (error) throw error;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function toggleMode() {
-    setErrorMessage(null);
-    setInfoMessage(null);
-    setMode(isSignUp ? 'signIn' : 'signUp');
   }
 
   return (
@@ -85,7 +63,7 @@ export function LoginScreen() {
               Bolas
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
-              {isSignUp ? 'Create an account to get started.' : 'Log in to your account.'}
+              Log in to your account.
             </ThemedText>
 
             <TextInput
@@ -110,7 +88,7 @@ export function LoginScreen() {
               placeholderTextColor={theme.textSecondary}
               autoCapitalize="none"
               secureTextEntry
-              textContentType={isSignUp ? 'newPassword' : 'password'}
+              textContentType="password"
               style={[
                 styles.input,
                 { color: theme.text, backgroundColor: theme.backgroundSelected },
@@ -132,7 +110,7 @@ export function LoginScreen() {
               onPress={handleSubmit}
               disabled={isSubmitting}
               accessibilityRole="button"
-              accessibilityLabel={isSignUp ? 'Sign up' : 'Log in'}
+              accessibilityLabel="Log in"
               style={({ pressed }) => [
                 styles.button,
                 { backgroundColor: AccentColor, opacity: isSubmitting ? 0.7 : 1 },
@@ -142,16 +120,18 @@ export function LoginScreen() {
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <ThemedText type="smallBold" style={styles.buttonLabel}>
-                  {isSignUp ? 'Sign up' : 'Log in'}
+                  Log in
                 </ThemedText>
               )}
             </Pressable>
 
-            <Pressable onPress={toggleMode} accessibilityRole="button">
-              <ThemedText type="link" themeColor="textSecondary" style={styles.toggleText}>
-                {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
-              </ThemedText>
-            </Pressable>
+            <Link href="/signup" asChild>
+              <Pressable accessibilityRole="button">
+                <ThemedText type="link" themeColor="textSecondary" style={styles.toggleText}>
+                  Don&apos;t have an account? Sign up
+                </ThemedText>
+              </Pressable>
+            </Link>
           </ThemedView>
         </SafeAreaView>
       </KeyboardAvoidingView>
