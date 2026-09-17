@@ -8,7 +8,8 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { session, isLoading } = useAuth();
+  const { session, profile, isLoading } = useAuth();
+  const hasUsername = !!profile?.username;
 
   // The splash overlay covers the screen until it finishes hiding, so
   // returning null here briefly doesn't cause a flash of blank content.
@@ -19,7 +20,13 @@ function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
+        <Stack.Protected guard={hasUsername}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={!hasUsername}>
+          <Stack.Screen name="profile-setup" />
+        </Stack.Protected>
       </Stack.Protected>
 
       <Stack.Protected guard={!session}>
