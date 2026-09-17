@@ -12,3 +12,13 @@ export type Profile = {
   created_at: string;
   updated_at: string;
 };
+
+export type ConnectionRow = {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: 'pending' | 'accepted';
+  created_at: string;
+};
+
+export type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
