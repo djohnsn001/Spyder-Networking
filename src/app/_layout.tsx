@@ -23,6 +23,8 @@ function RootNavigator() {
         <Stack.Protected guard={hasUsername}>
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
+          <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />
         </Stack.Protected>
 
         <Stack.Protected guard={!hasUsername}>
