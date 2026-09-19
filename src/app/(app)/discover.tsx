@@ -1,8 +1,9 @@
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { ConnectButton } from '@/components/connect-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -10,6 +11,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import {
+  acceptConnectionRequest,
   fetchMyConnections,
   getConnectionStatus,
   removeConnection,
@@ -18,13 +20,6 @@ import {
 import { getBusinessStageLabel } from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 export default function DiscoverScreen() {
   const theme = useTheme();
@@ -53,9 +48,11 @@ export default function DiscoverScreen() {
     setIsLoading(false);
   }, [myId]);
 
-  useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const filteredProfiles = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -76,12 +73,29 @@ export default function DiscoverScreen() {
     try {
       if (status === 'none') {
         await sendConnectionRequest(myId, profile.id);
-      } else if (status === 'pending_sent' && connectionId) {
+      } else if ((status === 'pending_sent' || status === 'accepted') && connectionId) {
         await removeConnection(connectionId);
       }
       setConnections(await fetchMyConnections(myId));
     } catch (error) {
       console.error('Failed to update connection', error);
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleRespond(profile: Profile, connectionId: string, accept: boolean) {
+    if (!myId) return;
+    setPendingId(profile.id);
+    try {
+      if (accept) {
+        await acceptConnectionRequest(connectionId);
+      } else {
+        await removeConnection(connectionId);
+      }
+      setConnections(await fetchMyConnections(myId));
+    } catch (error) {
+      console.error('Failed to respond to request', error);
     } finally {
       setPendingId(null);
     }
@@ -126,9 +140,9 @@ export default function DiscoverScreen() {
             renderItem={({ item }) => {
               const displayName = item.full_name || item.username || '';
               const businessStageLabel = getBusinessStageLabel(item.business_stage);
-              const { status } = myId
+              const { status, connectionId } = myId
                 ? getConnectionStatus(connections, myId, item.id)
-                : { status: 'none' as ConnectionStatus };
+                : { status: 'none' as ConnectionStatus, connectionId: null };
 
               return (
                 <Pressable
@@ -137,9 +151,7 @@ export default function DiscoverScreen() {
                   accessibilityLabel={`View ${displayName}'s profile`}
                   style={({ pressed }) => pressed && styles.cardPressed}>
                   <ThemedView type="backgroundElement" style={styles.card}>
-                    <ThemedView type="backgroundSelected" style={styles.avatar}>
-                      <ThemedText type="smallBold">{getInitials(displayName)}</ThemedText>
-                    </ThemedView>
+                    <Avatar uri={item.avatar_url} name={displayName} size={48} />
 
                     <View style={styles.cardBody}>
                       <ThemedText type="smallBold">{displayName}</ThemedText>
@@ -172,6 +184,17 @@ export default function DiscoverScreen() {
                         status={status}
                         pending={pendingId === item.id}
                         onPress={() => handleConnectPress(item)}
+                        onUnconnect={() => handleConnectPress(item)}
+                        onAccept={
+                          connectionId
+                            ? () => handleRespond(item, connectionId, true)
+                            : undefined
+                        }
+                        onDecline={
+                          connectionId
+                            ? () => handleRespond(item, connectionId, false)
+                            : undefined
+                        }
                       />
                     </View>
                   </ThemedView>
@@ -226,13 +249,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.three,
     borderRadius: Spacing.four,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardBody: {
     flex: 1,

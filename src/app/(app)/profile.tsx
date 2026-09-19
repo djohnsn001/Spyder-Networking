@@ -1,48 +1,47 @@
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, BottomTabInset, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
   acceptConnectionRequest,
+  fetchConnectionCount,
   fetchPendingRequests,
   removeConnection,
   type PendingRequest,
 } from '@/lib/connections';
 import { getBusinessStageLabel } from '@/lib/profile-options';
-import { supabase } from '@/lib/supabase';
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 export default function ProfileScreen() {
   const { session, profile } = useAuth();
 
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [connectionCount, setConnectionCount] = useState(0);
 
   const loadRequests = useCallback(async () => {
     if (!session) return;
     setRequests(await fetchPendingRequests(session.user.id));
+    setConnectionCount(await fetchConnectionCount(session.user.id));
   }, [session]);
 
-  useEffect(() => {
-    void Promise.resolve().then(loadRequests);
-  }, [loadRequests]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadRequests();
+    }, [loadRequests]),
+  );
 
   async function handleAccept(connectionId: string) {
     setRespondingId(connectionId);
     try {
       await acceptConnectionRequest(connectionId);
       setRequests((current) => current.filter((request) => request.connectionId !== connectionId));
+      if (session) setConnectionCount(await fetchConnectionCount(session.user.id));
     } catch (error) {
       console.error('Failed to accept request', error);
     } finally {
@@ -69,10 +68,18 @@ export default function ProfileScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent} style={styles.scrollView}>
+          <Pressable
+            onPress={() => router.push('/settings')}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            style={({ pressed }) => [styles.settingsLink, pressed && styles.buttonPressed]}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Settings
+            </ThemedText>
+          </Pressable>
+
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedView type="backgroundSelected" style={styles.avatar}>
-              <ThemedText type="subtitle">{getInitials(displayName)}</ThemedText>
-            </ThemedView>
+            <Avatar uri={profile?.avatar_url ?? null} name={displayName} size={96} />
 
             <ThemedText type="subtitle" style={styles.centerText}>
               {displayName}
@@ -83,6 +90,10 @@ export default function ProfileScreen() {
                 @{profile.username}
               </ThemedText>
             ) : null}
+
+            <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+              {connectionCount} connection{connectionCount === 1 ? '' : 's'}
+            </ThemedText>
 
             {profile?.bio ? (
               <ThemedText type="default" style={styles.centerText}>
@@ -105,34 +116,6 @@ export default function ProfileScreen() {
                 ))}
               </View>
             ) : null}
-
-            <Pressable
-              onPress={() => router.push('/edit-profile')}
-              accessibilityRole="button"
-              accessibilityLabel="Edit profile"
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: AccentColor },
-                pressed && styles.buttonPressed,
-              ]}>
-              <ThemedText type="smallBold" style={styles.buttonLabel}>
-                Edit Profile
-              </ThemedText>
-            </Pressable>
-
-            <Pressable
-              onPress={() => supabase.auth.signOut()}
-              accessibilityRole="button"
-              accessibilityLabel="Log out"
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: DangerColor },
-                pressed && styles.buttonPressed,
-              ]}>
-              <ThemedText type="smallBold" style={styles.buttonLabel}>
-                Log out
-              </ThemedText>
-            </Pressable>
           </ThemedView>
 
           {requests.length > 0 ? (
@@ -152,9 +135,7 @@ export default function ProfileScreen() {
                       onPress={() => router.push(`/user/${request.requester.id}`)}
                       accessibilityRole="button"
                       accessibilityLabel={`View ${name}'s profile`}>
-                      <ThemedView type="backgroundSelected" style={styles.requestAvatar}>
-                        <ThemedText type="small">{getInitials(name)}</ThemedText>
-                      </ThemedView>
+                      <Avatar uri={request.requester.avatar_url} name={name} size={36} />
                       <View style={styles.requestNameCol}>
                         <ThemedText type="small">{name}</ThemedText>
                         {request.requester.username ? (
@@ -234,12 +215,10 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.four,
     maxWidth: MaxContentWidth,
   },
-  avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
+  settingsLink: {
+    alignSelf: 'flex-end',
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
   },
   centerText: {
     textAlign: 'center',
@@ -254,14 +233,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.five,
-  },
-  button: {
-    marginTop: Spacing.two,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.four,
-    alignItems: 'center',
-    minWidth: 180,
   },
   buttonPressed: {
     opacity: 0.8,
@@ -288,13 +259,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     flex: 1,
-  },
-  requestAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   requestNameCol: {
     flexShrink: 1,

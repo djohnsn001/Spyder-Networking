@@ -1,3 +1,4 @@
+import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,10 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
 import { BioLimit, BusinessStages, InterestOptions, UsernamePattern } from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
@@ -40,6 +43,7 @@ export function ProfileForm({
 
   const [username, setUsername] = useState(initialProfile?.username ?? '');
   const [fullName, setFullName] = useState(initialProfile?.full_name ?? '');
+  const [avatarUrl, setAvatarUrl] = useState(initialProfile?.avatar_url ?? null);
   const [bio, setBio] = useState(initialProfile?.bio ?? '');
   const [city, setCity] = useState(initialProfile?.city ?? '');
   const [businessStage, setBusinessStage] = useState<BusinessStage | null>(
@@ -48,7 +52,43 @@ export function ProfileForm({
   const [interests, setInterests] = useState<string[]>(initialProfile?.interests ?? []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  async function handlePickAvatar() {
+    if (!session) return;
+    setErrorMessage(null);
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setErrorMessage('Photo library access is needed to set a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const asset = result.assets[0];
+      const publicUrl = await uploadAvatar(session.user.id, asset.uri, asset.mimeType);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', session.user.id);
+      if (error) throw error;
+      setAvatarUrl(publicUrl);
+      await refreshProfile();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to upload photo.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }
 
   function toggleInterest(interest: string) {
     setInterests((current) =>
@@ -130,6 +170,21 @@ export function ProfileForm({
               <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
                 {subtitle}
               </ThemedText>
+
+              <View style={styles.avatarSection}>
+                <Avatar uri={avatarUrl} name={fullName || username || 'You'} size={96} />
+                <Pressable
+                  onPress={handlePickAvatar}
+                  disabled={isUploadingAvatar}
+                  accessibilityRole="button"
+                  accessibilityLabel={avatarUrl ? 'Change profile picture' : 'Add profile picture'}>
+                  {isUploadingAvatar ? (
+                    <ActivityIndicator size="small" />
+                  ) : (
+                    <ThemedText type="link">{avatarUrl ? 'Change photo' : 'Add photo'}</ThemedText>
+                  )}
+                </Pressable>
+              </View>
 
               <View style={styles.field}>
                 <ThemedText type="smallBold">Username *</ThemedText>
@@ -317,6 +372,10 @@ const styles = StyleSheet.create({
   subtitle: {
     textAlign: 'center',
     marginTop: -Spacing.two,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   field: {
     gap: Spacing.two,

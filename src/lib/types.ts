@@ -9,6 +9,7 @@ export type Profile = {
   interests: string[];
   business_stage: BusinessStage | null;
   city: string | null;
+  notifications_enabled: boolean;
   created_at: string;
   updated_at: string;
 };

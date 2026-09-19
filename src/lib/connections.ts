@@ -100,6 +100,15 @@ export async function fetchPendingRequests(userId: string): Promise<PendingReque
     .filter((request): request is PendingRequest => request !== null);
 }
 
+export async function fetchConnectionCount(userId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('get_connection_count', { target_user: userId });
+  if (error) {
+    console.error('Failed to load connection count', error);
+    return 0;
+  }
+  return data ?? 0;
+}
+
 export async function fetchMutualCount(otherUserId: string): Promise<number> {
   const { data, error } = await supabase.rpc('get_mutuals', { other_user: otherUserId });
   if (error) {

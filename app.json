@@ -8,9 +8,11 @@
     "scheme": "bolas",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.bolas.app",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.bolas.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,11 +34,24 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Bolas needs access to your photos so you can set a profile picture."
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d94f7ea9-1bf8-4398-9c2f-a0f72b42b03f"
+      }
+    },
+    "owner": "zanemechlings-team"
   }
 }
