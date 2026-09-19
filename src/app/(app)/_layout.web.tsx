@@ -26,6 +26,9 @@ export default function AppTabsLayout() {
           <TabTrigger name="discover" href="/discover" asChild>
             <TabButton>Discover</TabButton>
           </TabTrigger>
+          <TabTrigger name="map" href="/map" asChild>
+            <TabButton>Map</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
             <TabButton>Profile</TabButton>
           </TabTrigger>
