@@ -1,9 +1,9 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { ThemePreferenceProvider, useThemePreference } from '@/lib/theme-preference';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -25,6 +25,10 @@ function RootNavigator() {
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />
+          <Stack.Screen
+            name="connections"
+            options={{ headerShown: true, headerTitle: 'Connections' }}
+          />
         </Stack.Protected>
 
         <Stack.Protected guard={!hasUsername}>
@@ -39,14 +43,22 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function RootLayoutThemed() {
+  const { resolvedScheme } = useThemePreference();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={resolvedScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
     </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemePreferenceProvider>
+      <RootLayoutThemed />
+    </ThemePreferenceProvider>
   );
 }

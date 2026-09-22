@@ -6,11 +6,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'Match device' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
 
 export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
+  const theme = useTheme();
+  const { preference, setPreference } = useThemePreference();
   const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
   const [isUpdatingLocationSharing, setIsUpdatingLocationSharing] = useState(false);
 
@@ -66,6 +76,44 @@ export default function SettingsScreen() {
                 ›
               </ThemedText>
             </Pressable>
+          </ThemedView>
+
+          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+            Appearance
+          </ThemedText>
+          <ThemedView type="backgroundElement" style={styles.group}>
+            <View style={styles.row}>
+              <View style={styles.rowTextCol}>
+                <ThemedText type="default">Theme</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Choose how Bolas looks
+                </ThemedText>
+              </View>
+            </View>
+            <View style={[styles.row, styles.themeOptionsRow]}>
+              {THEME_OPTIONS.map((option) => {
+                const selected = preference === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setPreference(option.value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={option.label}
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.themeOption,
+                      { backgroundColor: selected ? AccentColor : theme.backgroundSelected },
+                      pressed && styles.rowPressed,
+                    ]}>
+                    <ThemedText
+                      type="smallBold"
+                      style={selected ? styles.themeOptionLabelSelected : undefined}>
+                      {option.label}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
           </ThemedView>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
@@ -162,5 +210,17 @@ const styles = StyleSheet.create({
   },
   logoutLabel: {
     color: DangerColor,
+  },
+  themeOptionsRow: {
+    gap: Spacing.two,
+    paddingTop: 0,
+  },
+  themeOption: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.five,
+  },
+  themeOptionLabelSelected: {
+    color: '#fdfbf7',
   },
 });
