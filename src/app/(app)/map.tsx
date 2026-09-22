@@ -45,7 +45,7 @@ const BOISE_REGION = {
 // Fine threads, so the web reads as a delicate layer over the map rather
 // than heavy route lines. Tweak the thickness here — both spokes and mutual
 // lines use it.
-const WEB_LINE_WIDTH = 1.75;
+const WEB_LINE_WIDTH = 1.25;
 // Thin lines need strong contrast: cream over a dark map, near-black ink
 // over a light one.
 const WEB_LINE_COLOR = {
