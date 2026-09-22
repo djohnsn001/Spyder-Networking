@@ -43,19 +43,16 @@ const BOISE_REGION = {
 };
 
 // Fine white threads, so the web reads as a delicate layer over the map
-// rather than heavy route lines. Tweak the thickness here — both spokes and
-// mutual lines use it.
-const WEB_LINE_WIDTH = 1.75;
-// Your own spokes are solid; lines between two of your connections
-// (mutuals) are a little fainter so your direct connections stand out.
-const SPOKE_LINE_COLOR = '#FFFFFF';
-const MUTUAL_LINE_COLOR = 'rgba(255,255,255,0.65)';
-// Each white line sits on a slightly wider dark outline ("casing"), the
-// same trick map apps use for routes — it keeps white lines readable on
-// light maps as well as dark ones.
-const WEB_LINE_CASING_WIDTH = WEB_LINE_WIDTH + 2;
+// rather than heavy route lines. Your own spokes (you → a connection) are a
+// touch thicker and outlined, so they stand out from the mutual lines
+// between two of your connections.
+const SPOKE_LINE_WIDTH = 2;
+const MUTUAL_LINE_WIDTH = 1.75;
+const WEB_LINE_COLOR = '#FFFFFF';
+// Spokes sit on a slightly wider dark outline ("casing"), the same trick
+// map apps use for routes — it keeps them readable on light maps too.
+const SPOKE_CASING_WIDTH = SPOKE_LINE_WIDTH + 2;
 const SPOKE_CASING_COLOR = 'rgba(20,14,11,0.55)';
-const MUTUAL_CASING_COLOR = 'rgba(20,14,11,0.4)';
 
 // How long the map has to sit still after a pan/zoom before events for the
 // new area are fetched, so a long swipe triggers one request, not dozens.
@@ -387,23 +384,25 @@ export default function MapScreen() {
         // top-right corner — nudge it down below the "+" button.
         compassOffset={{ x: 0, y: FAB_SIZE + Spacing.two }}
         showsUserLocation={permissionState === 'granted'}>
-        {/* All casings first, then all white lines on top, so where two
-            lines cross a casing never cuts across a white line. */}
-        {webLines.map((line) => (
-          <Polyline
-            key={`casing-${line.key}`}
-            coordinates={line.coordinates}
-            strokeColor={line.kind === 'spoke' ? SPOKE_CASING_COLOR : MUTUAL_CASING_COLOR}
-            strokeWidth={WEB_LINE_CASING_WIDTH}
-            zIndex={1}
-          />
-        ))}
+        {/* Spoke outlines first, then every white line on top, so where two
+            lines cross an outline never cuts across a white line. */}
+        {webLines
+          .filter((line) => line.kind === 'spoke')
+          .map((line) => (
+            <Polyline
+              key={`casing-${line.key}`}
+              coordinates={line.coordinates}
+              strokeColor={SPOKE_CASING_COLOR}
+              strokeWidth={SPOKE_CASING_WIDTH}
+              zIndex={1}
+            />
+          ))}
         {webLines.map((line) => (
           <Polyline
             key={`line-${line.key}`}
             coordinates={line.coordinates}
-            strokeColor={line.kind === 'spoke' ? SPOKE_LINE_COLOR : MUTUAL_LINE_COLOR}
-            strokeWidth={WEB_LINE_WIDTH}
+            strokeColor={WEB_LINE_COLOR}
+            strokeWidth={line.kind === 'spoke' ? SPOKE_LINE_WIDTH : MUTUAL_LINE_WIDTH}
             zIndex={2}
           />
         ))}
