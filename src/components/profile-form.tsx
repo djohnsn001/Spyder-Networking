@@ -329,7 +329,7 @@ export function ProfileForm({
                   pressed && styles.buttonPressed,
                 ]}>
                 {isSubmitting ? (
-                  <ActivityIndicator color="#ffffff" />
+                  <ActivityIndicator color="#fdfbf7" />
                 ) : (
                   <ThemedText type="smallBold" style={styles.buttonLabel}>
                     {submitLabel}
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.five,
   },
   pillLabelSelected: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
   pressed: {
     opacity: 0.8,
@@ -425,6 +425,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   buttonLabel: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
 });

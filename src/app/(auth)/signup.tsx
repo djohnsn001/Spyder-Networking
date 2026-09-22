@@ -12,12 +12,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
-
-const AccentColor = '#3c87f7';
-const ErrorColor = '#d1453b';
 
 export default function SignUpScreen() {
   const theme = useTheme();
@@ -116,7 +113,7 @@ export default function SignUpScreen() {
                 pressed && styles.buttonPressed,
               ]}>
               {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color="#fdfbf7" />
               ) : (
                 <ThemedText type="smallBold" style={styles.buttonLabel}>
                   Sign up
@@ -183,7 +180,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   buttonLabel: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
   toggleText: {
     textAlign: 'center',

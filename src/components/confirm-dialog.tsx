@@ -103,12 +103,12 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.4)',
+    borderColor: 'rgba(131,101,93,0.35)',
   },
   pressed: {
     opacity: 0.8,
   },
   confirmLabel: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
 });

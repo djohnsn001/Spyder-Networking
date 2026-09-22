@@ -154,6 +154,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   buttonLabelWhite: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
 });

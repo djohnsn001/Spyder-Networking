@@ -91,9 +91,14 @@ export default function ProfileScreen() {
               </ThemedText>
             ) : null}
 
-            <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-              {connectionCount} connection{connectionCount === 1 ? '' : 's'}
-            </ThemedText>
+            <Pressable
+              onPress={() => router.push('/connections')}
+              accessibilityRole="button"
+              accessibilityLabel="View connections">
+              <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+                {connectionCount} connection{connectionCount === 1 ? '' : 's'}
+              </ThemedText>
+            </Pressable>
 
             {profile?.bio ? (
               <ThemedText type="default" style={styles.centerText}>
@@ -238,7 +243,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   buttonLabel: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
   requestsCard: {
     alignSelf: 'stretch',

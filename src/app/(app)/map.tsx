@@ -40,7 +40,7 @@ const BOISE_REGION = {
 
 // Pure white and thick, so the real connections between people read as a
 // web drawn over the map rather than thin route lines.
-const WEB_LINE_COLOR = '#FFFFFF';
+const WEB_LINE_COLOR = '#FAF5EC';
 const WEB_LINE_WIDTH = 3.5;
 
 type LatLng = { latitude: number; longitude: number };
@@ -402,9 +402,9 @@ const styles = StyleSheet.create({
   halo: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(250,245,236,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: 'rgba(250,245,236,0.6)',
   },
   groupMarker: {
     width: GROUP_MARKER_SIZE,
@@ -414,9 +414,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: AccentColor,
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: '#faf5ec',
   },
   groupMarkerText: {
-    color: '#ffffff',
+    color: '#fdfbf7',
   },
 });
