@@ -101,6 +101,38 @@ export async function fetchConversations(userId: string): Promise<ConversationSu
     .filter((summary): summary is ConversationSummary => summary !== null);
 }
 
+// Who the chat screen's header shows/links to. Direct conversations only
+// store the two user ids on the row itself, so this is a plain lookup, not
+// a query through conversation_participants.
+export async function fetchOtherParticipant(
+  conversationId: string,
+  userId: string,
+): Promise<Profile | null> {
+  const { data: conversation, error } = await supabase
+    .from('conversations')
+    .select('user_a_id, user_b_id')
+    .eq('id', conversationId)
+    .maybeSingle();
+  if (error || !conversation) {
+    if (error) console.error('Failed to load conversation', error);
+    return null;
+  }
+
+  const otherId = conversation.user_a_id === userId ? conversation.user_b_id : conversation.user_a_id;
+  if (!otherId) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', otherId)
+    .maybeSingle();
+  if (profileError) {
+    console.error('Failed to load the other participant', profileError);
+    return null;
+  }
+  return profile;
+}
+
 // Finds or creates the 1:1 conversation with other_user, enforcing the
 // accepted-connection rule server-side. Throws (rather than logging and
 // returning a fallback) because there's no sane default conversation id to
