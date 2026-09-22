@@ -143,8 +143,8 @@ export function regionToClusterDistance(longitudeDelta: number): number {
 // lines always land squarely on the marker instead of pointing at an empty
 // spot next to fanned-out avatars. Same size either way, so
 // resolveBubbleOverlaps has one constant footprint to reason about.
-export const AVATAR_SIZE = 40;
-export const GROUP_MARKER_SIZE = 40;
+export const AVATAR_SIZE = 34;
+export const GROUP_MARKER_SIZE = 34;
 
 function getMarkerFootprint(memberCount: number): number {
   return memberCount <= 1 ? AVATAR_SIZE : GROUP_MARKER_SIZE;
