@@ -1,9 +1,10 @@
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -14,10 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ClusterListModal } from '@/components/cluster-list-modal';
+import { DraftEventMarker, EventMarker } from '@/components/event-marker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { fetchEventsInRegion } from '@/lib/events';
 import {
   AVATAR_SIZE,
   clusterConnections,
@@ -29,7 +32,8 @@ import {
   updateMyLocation,
   type LocationCluster,
 } from '@/lib/map';
-import type { ConnectionEdge, ConnectionLocation } from '@/lib/types';
+import { useThemePreference } from '@/lib/theme-preference';
+import type { ConnectionEdge, ConnectionLocation, EventSummary } from '@/lib/types';
 
 const BOISE_REGION = {
   latitude: 43.615,
@@ -38,10 +42,22 @@ const BOISE_REGION = {
   longitudeDelta: 0.1,
 };
 
-// Pure white and thick, so the real connections between people read as a
-// web drawn over the map rather than thin route lines.
-const WEB_LINE_COLOR = '#FAF5EC';
-const WEB_LINE_WIDTH = 3.5;
+// Fine threads, so the web reads as a delicate layer over the map rather
+// than heavy route lines. Tweak the thickness here — both spokes and mutual
+// lines use it.
+const WEB_LINE_WIDTH = 1.75;
+// Thin lines need strong contrast: cream over a dark map, near-black ink
+// over a light one.
+const WEB_LINE_COLOR = {
+  dark: '#FAF5EC',
+  light: 'rgba(42,33,28,0.85)',
+} as const;
+
+// How long the map has to sit still after a pan/zoom before events for the
+// new area are fetched, so a long swipe triggers one request, not dozens.
+const EVENT_FETCH_DEBOUNCE_MS = 400;
+
+const FAB_SIZE = 52;
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -122,6 +138,19 @@ export default function MapScreen() {
   const [selectedCluster, setSelectedCluster] = useState<LocationCluster | null>(null);
   const [longitudeDelta, setLongitudeDelta] = useState(BOISE_REGION.longitudeDelta);
   const lastRegionUpdateRef = useRef(0);
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [draftPin, setDraftPin] = useState<LatLng | null>(null);
+  // The latest settled region — used for the "+" button (map center) and
+  // for refetching events when the tab regains focus.
+  const regionRef = useRef<Region>(BOISE_REGION);
+  const eventFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventRequestIdRef = useRef(0);
+
+  // Apple Maps can follow the app's own light/dark choice; Google Maps on
+  // Android has no built-in dark style, so it's always light there.
+  const { resolvedScheme } = useThemePreference();
+  const mapScheme = Platform.OS === 'ios' ? resolvedScheme : 'light';
+  const webLineColor = WEB_LINE_COLOR[mapScheme];
 
   // Recluster continuously while the user pinches/pans, not just once they
   // let go — throttled so a fast gesture doesn't trigger dozens of
@@ -132,6 +161,57 @@ export default function MapScreen() {
     if (now - lastRegionUpdateRef.current < 80) return;
     lastRegionUpdateRef.current = now;
     setLongitudeDelta(region.longitudeDelta);
+  }, []);
+
+  const loadEvents = useCallback(async (region: Region) => {
+    // Tag each request so a slow earlier response can't overwrite a newer one.
+    const requestId = ++eventRequestIdRef.current;
+    try {
+      const data = await fetchEventsInRegion(region);
+      if (requestId === eventRequestIdRef.current) setEvents(data);
+    } catch (error) {
+      // Keep whatever pins are already showing; the next pan retries.
+      console.error('Failed to load map events', error);
+    }
+  }, []);
+
+  const handleRegionChangeComplete = useCallback(
+    (region: Region) => {
+      lastRegionUpdateRef.current = Date.now();
+      setLongitudeDelta(region.longitudeDelta);
+      regionRef.current = region;
+
+      if (eventFetchTimerRef.current) clearTimeout(eventFetchTimerRef.current);
+      eventFetchTimerRef.current = setTimeout(() => {
+        void loadEvents(region);
+      }, EVENT_FETCH_DEBOUNCE_MS);
+    },
+    [loadEvents],
+  );
+
+  useEffect(
+    () => () => {
+      if (eventFetchTimerRef.current) clearTimeout(eventFetchTimerRef.current);
+    },
+    [],
+  );
+
+  // Runs on first open and every time an event sheet closes (the map
+  // regains focus): clear the temporary pin and pick up any event that was
+  // just created, edited, or deleted.
+  useFocusEffect(
+    useCallback(() => {
+      setDraftPin(null);
+      void loadEvents(regionRef.current);
+    }, [loadEvents]),
+  );
+
+  const openCreateEvent = useCallback((coordinate: LatLng) => {
+    setDraftPin(coordinate);
+    router.push({
+      pathname: '/event/new',
+      params: { latitude: String(coordinate.latitude), longitude: String(coordinate.longitude) },
+    });
   }, []);
 
   const loadWeb = useCallback(async () => {
@@ -278,17 +358,16 @@ export default function MapScreen() {
         style={styles.map}
         initialRegion={BOISE_REGION}
         onRegionChange={handleRegionChange}
-        onRegionChangeComplete={(region) => {
-          lastRegionUpdateRef.current = Date.now();
-          setLongitudeDelta(region.longitudeDelta);
-        }}
+        onRegionChangeComplete={handleRegionChangeComplete}
+        onLongPress={(event) => openCreateEvent(event.nativeEvent.coordinate)}
+        userInterfaceStyle={mapScheme}
         showsUserLocation={permissionState === 'granted'}>
         {myPosition &&
           clusters.map((cluster) => (
             <Polyline
               key={`spoke-${cluster.key}`}
               coordinates={[myPosition, cluster.centroid]}
-              strokeColor={WEB_LINE_COLOR}
+              strokeColor={webLineColor}
               strokeWidth={WEB_LINE_WIDTH}
             />
           ))}
@@ -297,7 +376,7 @@ export default function MapScreen() {
           <Polyline
             key={`edge-${line.key}`}
             coordinates={line.coordinates}
-            strokeColor={WEB_LINE_COLOR}
+            strokeColor={webLineColor}
             strokeWidth={WEB_LINE_WIDTH}
           />
         ))}
@@ -319,7 +398,32 @@ export default function MapScreen() {
             />
           ),
         )}
+
+        {/* Drawn after the people markers so events sit on top. */}
+        {events.map((event) => (
+          <EventMarker
+            key={`${event.id}-${event.starts_at}`}
+            event={event}
+            onPress={() => router.push(`/event/${event.id}`)}
+          />
+        ))}
+
+        {draftPin ? <DraftEventMarker coordinate={draftPin} /> : null}
       </MapView>
+
+      <Pressable
+        onPress={() =>
+          openCreateEvent({
+            latitude: regionRef.current.latitude,
+            longitude: regionRef.current.longitude,
+          })
+        }
+        accessibilityRole="button"
+        accessibilityLabel="Create an event at the center of the map"
+        accessibilityHint="Or long-press anywhere on the map to pick a spot"
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
+        <ThemedText style={styles.fabLabel}>+</ThemedText>
+      </Pressable>
 
       {webState === 'loading' ? (
         <ThemedView type="backgroundElement" style={styles.banner}>
@@ -387,7 +491,8 @@ const styles = StyleSheet.create({
   banner: {
     position: 'absolute',
     left: Spacing.four,
-    right: Spacing.four,
+    // Leave room for the "+" button on the right.
+    right: Spacing.four + FAB_SIZE + Spacing.two,
     bottom: BottomTabInset + Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,5 +523,32 @@ const styles = StyleSheet.create({
   },
   groupMarkerText: {
     color: '#fdfbf7',
+  },
+  fab: {
+    position: 'absolute',
+    right: Spacing.four,
+    bottom: BottomTabInset + Spacing.three,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AccentColor,
+    borderWidth: 2,
+    borderColor: '#faf5ec',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  fabPressed: {
+    opacity: 0.85,
+  },
+  fabLabel: {
+    color: '#fdfbf7',
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: 600,
   },
 });

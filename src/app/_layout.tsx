@@ -25,6 +25,23 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-message" options={{ presentation: 'modal' }} />
+          {/* Map events open as bottom sheets over the map. */}
+          <Stack.Screen
+            name="event/new"
+            options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true }}
+          />
+          <Stack.Screen
+            name="event/[id]/index"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.5, 1],
+              sheetGrabberVisible: true,
+            }}
+          />
+          <Stack.Screen
+            name="event/[id]/edit"
+            options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true }}
+          />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />

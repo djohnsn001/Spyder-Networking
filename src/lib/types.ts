@@ -64,3 +64,28 @@ export type Message = {
   body: string;
   created_at: string;
 };
+
+export type EventVisibility = 'public' | 'connections';
+
+// One row of the event_summaries view: the event plus what the map and
+// detail sheet need to show about it.
+export type EventSummary = {
+  id: string;
+  creator_id: string;
+  title: string;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  location_name: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  visibility: EventVisibility;
+  created_at: string;
+  updated_at: string;
+  effective_ends_at: string;
+  creator_username: string | null;
+  creator_full_name: string | null;
+  creator_avatar_url: string | null;
+  attendee_count: number;
+  is_going: boolean;
+};
