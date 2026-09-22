@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
   const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
+  const [isUpdatingLocationSharing, setIsUpdatingLocationSharing] = useState(false);
 
   async function handleToggleNotifications(value: boolean) {
     if (!session) return;
@@ -27,6 +28,23 @@ export default function SettingsScreen() {
       console.error('Failed to update notification preference', error);
     } finally {
       setIsUpdatingNotifications(false);
+    }
+  }
+
+  async function handleToggleLocationSharing(value: boolean) {
+    if (!session) return;
+    setIsUpdatingLocationSharing(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ location_sharing: value ? 'connections' : 'off' })
+        .eq('id', session.user.id);
+      if (error) throw error;
+      await refreshProfile();
+    } catch (error) {
+      console.error('Failed to update location sharing preference', error);
+    } finally {
+      setIsUpdatingLocationSharing(false);
     }
   }
 
@@ -65,6 +83,21 @@ export default function SettingsScreen() {
                 value={profile?.notifications_enabled ?? true}
                 onValueChange={handleToggleNotifications}
                 disabled={isUpdatingNotifications}
+                trackColor={{ true: AccentColor }}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.rowTextCol}>
+                <ThemedText type="default">Show me on the map</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Let your connections see your approximate location on the Web Map
+                </ThemedText>
+              </View>
+              <Switch
+                value={(profile?.location_sharing ?? 'connections') === 'connections'}
+                onValueChange={handleToggleLocationSharing}
+                disabled={isUpdatingLocationSharing}
                 trackColor={{ true: AccentColor }}
               />
             </View>

@@ -40,6 +40,12 @@
         {
           "photosPermission": "Bolas needs access to your photos so you can set a profile picture."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Bolas needs your approximate location to show you on the Web Map and help you find nearby builders."
+        }
       ]
     ],
     "experiments": {
