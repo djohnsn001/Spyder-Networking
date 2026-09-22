@@ -117,36 +117,82 @@ export function resolveBubbleOverlaps(
   );
 }
 
-// Turns the map's visible region into a cluster distance, so separate areas
-// can merge further as you zoom out. longitudeDelta is how many degrees of
-// longitude are visible edge-to-edge, i.e. it shrinks as you zoom in.
+// Turns the map's visible region into a cluster distance, so nearby people
+// group together when zoomed out and split apart as you zoom in.
+// longitudeDelta is how many degrees of longitude are visible edge-to-edge,
+// i.e. it shrinks as you zoom in — and so does the grouping distance, with
+// no floor, so any group eventually splits if you zoom in far enough.
 //
-// The floor is deliberately neighborhood-sized, not a few hundred meters:
-// zooming in must never be able to split a group down to something that
-// reads as one person's exact spot. It sits above the ~1.1km rounding
-// update_my_location() already applies server-side, so the map never shows
-// anything finer than what's stored. resolveBubbleOverlaps separately
-// guarantees bubbles never visually crowd together — this floor is what
-// guarantees grouping never gets finer than "somewhere in this
-// neighborhood," no matter how far in you zoom.
-// Small on purpose: this only controls merging *beyond* the neighborhood
-// floor below, i.e. combining separate areas together, which should take a
-// lot of zooming out — the web staying spread out into distinct areas is
-// more important than aggressively consolidating them.
-const CLUSTER_ZOOM_FACTOR = 0.03;
-const MIN_CLUSTER_DISTANCE_DEGREES = 0.018; // ~2km — roughly a neighborhood's footprint
+// Privacy still holds without a floor: update_my_location() rounds every
+// saved location to ~1.1km server-side, so zooming all the way in only
+// ever shows that rounded spot, never anyone's real position.
+//
+// 0.15 means "group people who are within 15% of the screen's width of
+// each other": at the default Boise zoom that keeps close neighbors
+// grouped, and they split once you zoom in about 2x.
+const CLUSTER_ZOOM_FACTOR = 0.15;
 
 export function regionToClusterDistance(longitudeDelta: number): number {
-  return Math.max(longitudeDelta * CLUSTER_ZOOM_FACTOR, MIN_CLUSTER_DISTANCE_DEGREES);
+  return longitudeDelta * CLUSTER_ZOOM_FACTOR;
+}
+
+// Once zoomed in this far (the screen showing ~0.05° of longitude, a few km
+// across), every group that's still left is people whose saved spots are
+// identical or nearly so — they'd never split on their own, so
+// fanOutClusters lays them out side by side instead.
+export const FAN_OUT_MAX_LONGITUDE_DELTA = 0.05;
+
+// Space between fanned-out halos, in screen points.
+const FAN_OUT_GAP_POINTS = 4;
+
+// Replaces each remaining group with its members' own avatars, arranged in
+// a small ring around the group's spot (two people sit left and right of
+// it). Offsets are in screen points, converted to degrees for the current
+// zoom, so the avatars always sit just touching-distance apart on screen.
+// Purely visual — the offsets aren't anyone's real position.
+export function fanOutClusters(
+  clusters: LocationCluster[],
+  degreesPerPoint: number,
+): LocationCluster[] {
+  return clusters.flatMap((cluster) => {
+    const count = cluster.members.length;
+    if (count <= 1) return [cluster];
+
+    const spacingPoints = AVATAR_HALO_SIZE + FAN_OUT_GAP_POINTS;
+    // Radius of a ring whose neighboring points are spacingPoints apart.
+    const radiusPoints = spacingPoints / (2 * Math.sin(Math.PI / count));
+    // On the (Mercator) map a degree of latitude is taller on screen than a
+    // degree of longitude, by 1/cos(latitude).
+    const lngPerPoint = degreesPerPoint;
+    const latPerPoint = degreesPerPoint * Math.cos((cluster.centroid.latitude * Math.PI) / 180);
+
+    // Sorted so each person keeps the same slot between renders.
+    const members = [...cluster.members].sort((a, b) => a.id.localeCompare(b.id));
+    return members.map((member, index) => {
+      // Start on the left and go around, so a pair sits side by side.
+      const angle = Math.PI + (2 * Math.PI * index) / count;
+      return {
+        key: member.id,
+        members: [member],
+        centroid: {
+          latitude: cluster.centroid.latitude + Math.sin(angle) * radiusPoints * latPerPoint,
+          longitude: cluster.centroid.longitude + Math.cos(angle) * radiusPoints * lngPerPoint,
+        },
+      };
+    });
+  });
 }
 
 // Every area is drawn as one fixed-size dot sitting exactly on its
 // centroid — a solo person's avatar, or a count for a group — so the web's
-// lines always land squarely on the marker instead of pointing at an empty
-// spot next to fanned-out avatars. Same size either way, so
-// resolveBubbleOverlaps has one constant footprint to reason about.
+// lines always land squarely on the marker. (fanOutClusters moves each
+// fanned person's centroid, so their lines follow them too.) Same size
+// either way, so resolveBubbleOverlaps has one constant footprint to
+// reason about.
 export const AVATAR_SIZE = 34;
 export const GROUP_MARKER_SIZE = 34;
+// The soft translucent ring drawn around each solo avatar.
+export const AVATAR_HALO_SIZE = AVATAR_SIZE + 16;
 
 function getMarkerFootprint(memberCount: number): number {
   return memberCount <= 1 ? AVATAR_SIZE : GROUP_MARKER_SIZE;

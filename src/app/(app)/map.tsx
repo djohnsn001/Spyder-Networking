@@ -22,8 +22,11 @@ import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constan
 import { useAuth } from '@/lib/auth';
 import { fetchEventsInRegion } from '@/lib/events';
 import {
+  AVATAR_HALO_SIZE,
   AVATAR_SIZE,
   clusterConnections,
+  FAN_OUT_MAX_LONGITUDE_DELTA,
+  fanOutClusters,
   fetchConnectionEdges,
   fetchConnectionLocations,
   GROUP_MARKER_SIZE,
@@ -75,7 +78,7 @@ function IndividualAvatarMarker({
   onPress: () => void;
 }) {
   const displayName = member.full_name || member.username || '';
-  const haloSize = AVATAR_SIZE + 16;
+  const haloSize = AVATAR_HALO_SIZE;
 
   return (
     <Marker
@@ -290,10 +293,14 @@ export default function MapScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const degreesPerPoint = longitudeDelta / windowWidth;
 
-  const clusters = useMemo(
-    () => resolveBubbleOverlaps(groupedClusters, degreesPerPoint),
-    [groupedClusters, degreesPerPoint],
-  );
+  // Zoomed in far enough, any group that's still left can't split on its
+  // own (its people share a saved spot), so lay them out side by side.
+  const clusters = useMemo(() => {
+    const resolved = resolveBubbleOverlaps(groupedClusters, degreesPerPoint);
+    return longitudeDelta <= FAN_OUT_MAX_LONGITUDE_DELTA
+      ? fanOutClusters(resolved, degreesPerPoint)
+      : resolved;
+  }, [groupedClusters, degreesPerPoint, longitudeDelta]);
 
   // Every connection's id points at the cluster (area bubble) it landed in,
   // so spokes and mutual lines connect bubble-to-bubble, never to a single
