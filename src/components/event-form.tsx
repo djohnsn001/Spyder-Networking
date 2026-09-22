@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DateTimeField } from '@/components/date-time-field';
 import { ThemedText } from '@/components/themed-text';
@@ -99,171 +100,173 @@ export function EventForm({
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
-        <View style={styles.header}>
-          <ThemedText type="subtitle" style={styles.heading}>
-            {heading}
-          </ThemedText>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel">
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              Cancel
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+          <View style={styles.header}>
+            <ThemedText type="subtitle" style={styles.heading}>
+              {heading}
             </ThemedText>
-          </Pressable>
-        </View>
-
-        <View style={styles.field}>
-          <View style={styles.fieldHeaderRow}>
-            <ThemedText type="smallBold">Title *</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {title.length}/{EVENT_TITLE_LIMIT}
-            </ThemedText>
-          </View>
-          <TextInput
-            value={title}
-            onChangeText={(text) => setTitle(text.slice(0, EVENT_TITLE_LIMIT))}
-            placeholder="Founder coffee, pitch practice…"
-            placeholderTextColor={theme.textSecondary}
-            style={inputStyle}
-            accessibilityLabel="Title"
-          />
-          {renderError(errors.title)}
-        </View>
-
-        <View style={styles.field}>
-          <View style={styles.fieldHeaderRow}>
-            <ThemedText type="smallBold">Description</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {description.length}/{EVENT_DESCRIPTION_LIMIT}
-            </ThemedText>
-          </View>
-          <TextInput
-            value={description}
-            onChangeText={(text) => setDescription(text.slice(0, EVENT_DESCRIPTION_LIMIT))}
-            placeholder="What's happening, who should come?"
-            placeholderTextColor={theme.textSecondary}
-            multiline
-            numberOfLines={4}
-            style={[inputStyle, styles.textArea]}
-            accessibilityLabel="Description"
-          />
-          {renderError(errors.description)}
-        </View>
-
-        <View style={styles.field}>
-          <ThemedText type="smallBold">Location name</ThemedText>
-          <TextInput
-            value={locationName}
-            onChangeText={(text) => setLocationName(text.slice(0, EVENT_LOCATION_NAME_LIMIT))}
-            placeholder="Boise State Library"
-            placeholderTextColor={theme.textSecondary}
-            style={inputStyle}
-            accessibilityLabel="Location name"
-          />
-          <ThemedText type="small" themeColor="textSecondary">
-            Events show the exact spot you picked — use a public place.
-          </ThemedText>
-          {renderError(errors.locationName)}
-        </View>
-
-        <View style={styles.field}>
-          <ThemedText type="smallBold">Starts *</ThemedText>
-          <DateTimeField
-            value={startsAt}
-            onChange={setStartsAt}
-            minimumDate={requireFutureStart ? openedAt : undefined}
-            accessibilityLabel="Start time"
-          />
-          {renderError(errors.startsAt)}
-        </View>
-
-        <View style={styles.field}>
-          <View style={styles.fieldHeaderRow}>
-            <ThemedText type="smallBold">Ends</ThemedText>
-            <Pressable
-              onPress={() =>
-                setEndsAt(endsAt ? null : new Date(startsAt.getTime() + DEFAULT_DURATION_MS))
-              }
-              accessibilityRole="button"
-              accessibilityLabel={endsAt ? 'Remove end time' : 'Add end time'}>
-              <ThemedText type="smallBold" style={styles.linkText}>
-                {endsAt ? 'Remove' : 'Add end time'}
+            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel">
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                Cancel
               </ThemedText>
             </Pressable>
           </View>
-          {endsAt ? (
-            <DateTimeField
-              value={endsAt}
-              onChange={setEndsAt}
-              minimumDate={startsAt}
-              accessibilityLabel="End time"
+
+          <View style={styles.field}>
+            <View style={styles.fieldHeaderRow}>
+              <ThemedText type="smallBold">Title *</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {title.length}/{EVENT_TITLE_LIMIT}
+              </ThemedText>
+            </View>
+            <TextInput
+              value={title}
+              onChangeText={(text) => setTitle(text.slice(0, EVENT_TITLE_LIMIT))}
+              placeholder="Founder coffee, pitch practice…"
+              placeholderTextColor={theme.textSecondary}
+              style={inputStyle}
+              accessibilityLabel="Title"
             />
-          ) : (
-            <ThemedText type="small" themeColor="textSecondary">
-              No end time — it'll leave the map 3 hours after it starts.
-            </ThemedText>
-          )}
-          {renderError(errors.endsAt)}
-        </View>
-
-        <View style={styles.field}>
-          <ThemedText type="smallBold">Who can see it</ThemedText>
-          <View style={styles.pillRow}>
-            {VisibilityOptions.map((option) => {
-              const selected = visibility === option.value;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => setVisibility(option.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={({ pressed }) => [
-                    styles.pill,
-                    { backgroundColor: selected ? AccentColor : theme.backgroundSelected },
-                    pressed && styles.pressed,
-                  ]}>
-                  <ThemedText
-                    type="small"
-                    style={selected ? styles.pillLabelSelected : undefined}
-                    themeColor={selected ? undefined : 'text'}>
-                    {option.label}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
+            {renderError(errors.title)}
           </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {VisibilityOptions.find((option) => option.value === visibility)?.hint}
-          </ThemedText>
-        </View>
 
-        {submitError ? (
-          <ThemedText type="small" style={[styles.errorText, styles.centerText]}>
-            {submitError}
-          </ThemedText>
-        ) : null}
+          <View style={styles.field}>
+            <View style={styles.fieldHeaderRow}>
+              <ThemedText type="smallBold">Description</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {description.length}/{EVENT_DESCRIPTION_LIMIT}
+              </ThemedText>
+            </View>
+            <TextInput
+              value={description}
+              onChangeText={(text) => setDescription(text.slice(0, EVENT_DESCRIPTION_LIMIT))}
+              placeholder="What's happening, who should come?"
+              placeholderTextColor={theme.textSecondary}
+              multiline
+              numberOfLines={4}
+              style={[inputStyle, styles.textArea]}
+              accessibilityLabel="Description"
+            />
+            {renderError(errors.description)}
+          </View>
 
-        <Pressable
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-          accessibilityRole="button"
-          accessibilityLabel={submitLabel}
-          style={({ pressed }) => [
-            styles.button,
-            { opacity: isSubmitting ? 0.7 : 1 },
-            pressed && styles.pressed,
-          ]}>
-          {isSubmitting ? (
-            <ActivityIndicator color="#fdfbf7" />
-          ) : (
-            <ThemedText type="smallBold" style={styles.buttonLabel}>
-              {submitLabel}
+          <View style={styles.field}>
+            <ThemedText type="smallBold">Location name</ThemedText>
+            <TextInput
+              value={locationName}
+              onChangeText={(text) => setLocationName(text.slice(0, EVENT_LOCATION_NAME_LIMIT))}
+              placeholder="Boise State Library"
+              placeholderTextColor={theme.textSecondary}
+              style={inputStyle}
+              accessibilityLabel="Location name"
+            />
+            <ThemedText type="small" themeColor="textSecondary">
+              Events show the exact spot you picked — use a public place.
             </ThemedText>
-          )}
-        </Pressable>
-      </ScrollView>
+            {renderError(errors.locationName)}
+          </View>
+
+          <View style={styles.field}>
+            <ThemedText type="smallBold">Starts *</ThemedText>
+            <DateTimeField
+              value={startsAt}
+              onChange={setStartsAt}
+              minimumDate={requireFutureStart ? openedAt : undefined}
+              accessibilityLabel="Start time"
+            />
+            {renderError(errors.startsAt)}
+          </View>
+
+          <View style={styles.field}>
+            <View style={styles.fieldHeaderRow}>
+              <ThemedText type="smallBold">Ends</ThemedText>
+              <Pressable
+                onPress={() =>
+                  setEndsAt(endsAt ? null : new Date(startsAt.getTime() + DEFAULT_DURATION_MS))
+                }
+                accessibilityRole="button"
+                accessibilityLabel={endsAt ? 'Remove end time' : 'Add end time'}>
+                <ThemedText type="smallBold" style={styles.linkText}>
+                  {endsAt ? 'Remove' : 'Add end time'}
+                </ThemedText>
+              </Pressable>
+            </View>
+            {endsAt ? (
+              <DateTimeField
+                value={endsAt}
+                onChange={setEndsAt}
+                minimumDate={startsAt}
+                accessibilityLabel="End time"
+              />
+            ) : (
+              <ThemedText type="small" themeColor="textSecondary">
+                No end time — it'll leave the map 3 hours after it starts.
+              </ThemedText>
+            )}
+            {renderError(errors.endsAt)}
+          </View>
+
+          <View style={styles.field}>
+            <ThemedText type="smallBold">Who can see it</ThemedText>
+            <View style={styles.pillRow}>
+              {VisibilityOptions.map((option) => {
+                const selected = visibility === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setVisibility(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.pill,
+                      { backgroundColor: selected ? AccentColor : theme.backgroundSelected },
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText
+                      type="small"
+                      style={selected ? styles.pillLabelSelected : undefined}
+                      themeColor={selected ? undefined : 'text'}>
+                      {option.label}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              {VisibilityOptions.find((option) => option.value === visibility)?.hint}
+            </ThemedText>
+          </View>
+
+          {submitError ? (
+            <ThemedText type="small" style={[styles.errorText, styles.centerText]}>
+              {submitError}
+            </ThemedText>
+          ) : null}
+
+          <Pressable
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+            accessibilityRole="button"
+            accessibilityLabel={submitLabel}
+            style={({ pressed }) => [
+              styles.button,
+              { opacity: isSubmitting ? 0.7 : 1 },
+              pressed && styles.pressed,
+            ]}>
+            {isSubmitting ? (
+              <ActivityIndicator color="#fdfbf7" />
+            ) : (
+              <ThemedText type="smallBold" style={styles.buttonLabel}>
+                {submitLabel}
+              </ThemedText>
+            )}
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
     </ThemedView>
   );
 }

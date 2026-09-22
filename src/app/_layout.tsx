@@ -25,23 +25,20 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-message" options={{ presentation: 'modal' }} />
-          {/* Map events open as bottom sheets over the map. */}
-          <Stack.Screen
-            name="event/new"
-            options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true }}
-          />
+          {/* The create/edit forms are tall and scroll, so they're regular
+              modals like new-message. The detail view is a bottom sheet sized
+              to its content — on iOS a formSheet's content has no fixed
+              height, so screens inside one must not rely on flex: 1. */}
+          <Stack.Screen name="event/new" options={{ presentation: 'modal' }} />
           <Stack.Screen
             name="event/[id]/index"
             options={{
               presentation: 'formSheet',
-              sheetAllowedDetents: [0.5, 1],
+              sheetAllowedDetents: 'fitToContents',
               sheetGrabberVisible: true,
             }}
           />
-          <Stack.Screen
-            name="event/[id]/edit"
-            options={{ presentation: 'formSheet', sheetAllowedDetents: [1], sheetGrabberVisible: true }}
-          />
+          <Stack.Screen name="event/[id]/edit" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />

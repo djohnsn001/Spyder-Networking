@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -13,11 +14,15 @@ import type { EventSummary } from '@/lib/types';
 
 type LoadState = 'loading' | 'loaded' | 'missing' | 'error';
 
-// Bottom sheet opened by tapping an event pin on the Map tab.
+// Bottom sheet opened by tapping an event pin on the Map tab. It's a
+// fitToContents formSheet: the sheet takes its height from this content, so
+// nothing here may use flex: 1 (there's no parent height to fill — on iOS
+// that renders a blank sheet).
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const myId = session?.user.id;
+  const insets = useSafeAreaInsets();
 
   const [event, setEvent] = useState<EventSummary | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -123,99 +128,107 @@ export default function EventDetailScreen() {
   const goingLabel = event.attendee_count === 1 ? '1 going' : `${event.attendee_count} going`;
 
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.titleBlock}>
-          <ThemedText type="subtitle" style={styles.title}>
-            {event.title}
-          </ThemedText>
-          <ThemedText type="smallBold" style={styles.time}>
-            {formatEventTime(event.starts_at, event.ends_at)}
-          </ThemedText>
-          {event.location_name ? (
-            <ThemedText type="default" themeColor="textSecondary">
-              {event.location_name}
-            </ThemedText>
-          ) : null}
-          <ThemedText type="small" themeColor="textSecondary">
-            {event.visibility === 'connections' ? 'Connections only' : 'Public'} · {goingLabel}
-          </ThemedText>
-        </View>
-
-        <Pressable
-          onPress={handleOpenCreator}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${creatorName}'s profile`}
-          style={({ pressed }) => [styles.creatorRow, pressed && styles.pressed]}>
-          <Avatar uri={event.creator_avatar_url} name={creatorName} size={36} />
-          <View style={styles.creatorText}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Hosted by
-            </ThemedText>
-            <ThemedText type="smallBold">{isCreator ? 'You' : creatorName}</ThemedText>
-          </View>
-        </Pressable>
-
-        {event.description ? <ThemedText type="default">{event.description}</ThemedText> : null}
-
-        {actionError ? (
-          <ThemedText type="small" style={styles.errorText}>
-            {actionError}
+    // iOS already pads a fitToContents sheet for the home indicator.
+    <ThemedView
+      style={[
+        styles.content,
+        { paddingBottom: Spacing.four + (Platform.OS === 'android' ? insets.bottom : 0) },
+      ]}>
+      <View style={styles.titleBlock}>
+        <ThemedText type="subtitle" style={styles.title}>
+          {event.title}
+        </ThemedText>
+        <ThemedText type="smallBold" style={styles.time}>
+          {formatEventTime(event.starts_at, event.ends_at)}
+        </ThemedText>
+        {event.location_name ? (
+          <ThemedText type="default" themeColor="textSecondary">
+            {event.location_name}
           </ThemedText>
         ) : null}
+        <ThemedText type="small" themeColor="textSecondary">
+          {event.visibility === 'connections' ? 'Connections only' : 'Public'} · {goingLabel}
+        </ThemedText>
+      </View>
 
-        {hasEnded ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-            This event has ended.
+      <Pressable
+        onPress={handleOpenCreator}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${creatorName}'s profile`}
+        style={({ pressed }) => [styles.creatorRow, pressed && styles.pressed]}>
+        <Avatar uri={event.creator_avatar_url} name={creatorName} size={36} />
+        <View style={styles.creatorText}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Hosted by
           </ThemedText>
-        ) : isCreator ? (
-          <View style={styles.actionRow}>
-            <Pressable
-              onPress={() => router.push(`/event/${event.id}/edit`)}
-              disabled={isDeleting}
-              accessibilityRole="button"
-              accessibilityLabel="Edit event"
-              style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold">Edit</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() => setConfirmingDelete(true)}
-              disabled={isDeleting}
-              accessibilityRole="button"
-              accessibilityLabel="Delete event"
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: DangerColor },
-                pressed && styles.pressed,
-              ]}>
-              {isDeleting ? (
-                <ActivityIndicator color="#fdfbf7" />
-              ) : (
-                <ThemedText type="smallBold" style={styles.buttonLabel}>
-                  Delete
-                </ThemedText>
-              )}
-            </Pressable>
-          </View>
-        ) : (
+          <ThemedText type="smallBold">{isCreator ? 'You' : creatorName}</ThemedText>
+        </View>
+      </Pressable>
+
+      {event.description ? <ThemedText type="default">{event.description}</ThemedText> : null}
+
+      {actionError ? (
+        <ThemedText type="small" style={styles.errorText}>
+          {actionError}
+        </ThemedText>
+      ) : null}
+
+      {hasEnded ? (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+          This event has ended.
+        </ThemedText>
+      ) : isCreator ? (
+        <View style={styles.actionRow}>
           <Pressable
-            onPress={handleToggleGoing}
-            disabled={isUpdatingRsvp}
+            onPress={() => router.push(`/event/${event.id}/edit`)}
+            disabled={isDeleting}
             accessibilityRole="button"
-            accessibilityState={{ selected: event.is_going }}
-            accessibilityLabel={event.is_going ? "You're going. Tap to change to not going" : 'Going'}
+            accessibilityLabel="Edit event"
             style={({ pressed }) => [
               styles.button,
-              event.is_going ? styles.secondaryButton : { backgroundColor: AccentColor },
+              styles.rowButton,
+              styles.secondaryButton,
               pressed && styles.pressed,
             ]}>
-            <ThemedText type="smallBold" style={event.is_going ? undefined : styles.buttonLabel}>
-              {event.is_going ? "✓ Going · Tap if you can't make it" : 'Going'}
-            </ThemedText>
+            <ThemedText type="smallBold">Edit</ThemedText>
           </Pressable>
-        )}
-      </ScrollView>
-
+          <Pressable
+            onPress={() => setConfirmingDelete(true)}
+            disabled={isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete event"
+            style={({ pressed }) => [
+              styles.button,
+              styles.rowButton,
+              { backgroundColor: DangerColor },
+              pressed && styles.pressed,
+            ]}>
+            {isDeleting ? (
+              <ActivityIndicator color="#fdfbf7" />
+            ) : (
+              <ThemedText type="smallBold" style={styles.buttonLabel}>
+                Delete
+              </ThemedText>
+            )}
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          onPress={handleToggleGoing}
+          disabled={isUpdatingRsvp}
+          accessibilityRole="button"
+          accessibilityState={{ selected: event.is_going }}
+          accessibilityLabel={event.is_going ? "You're going. Tap to change to not going" : 'Going'}
+          style={({ pressed }) => [
+            styles.button,
+            event.is_going ? styles.secondaryButton : { backgroundColor: AccentColor },
+            pressed && styles.pressed,
+          ]}>
+          <ThemedText type="smallBold" style={event.is_going ? undefined : styles.buttonLabel}>
+            {event.is_going ? "✓ Going · Tap if you can't make it" : 'Going'}
+          </ThemedText>
+        </Pressable>
+      )}
       <ConfirmDialog
         visible={confirmingDelete}
         title="Delete this event?"
@@ -230,11 +243,8 @@ export default function EventDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   centered: {
-    flex: 1,
+    minHeight: 200,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.four,
@@ -245,7 +255,7 @@ const styles = StyleSheet.create({
   content: {
     gap: Spacing.three,
     padding: Spacing.four,
-    paddingBottom: Spacing.six,
+    paddingTop: Spacing.five,
   },
   titleBlock: {
     gap: Spacing.one,
@@ -271,11 +281,15 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   button: {
-    flex: 1,
     paddingVertical: Spacing.three,
     borderRadius: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Only inside the Edit/Delete row, to split its width — never on its own,
+  // where flex: 1 would try to fill a height the sheet doesn't have.
+  rowButton: {
+    flex: 1,
   },
   secondaryButton: {
     borderWidth: 1,

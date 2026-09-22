@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ClusterListModal } from '@/components/cluster-list-modal';
@@ -149,6 +149,7 @@ export default function MapScreen() {
   // Apple Maps can follow the app's own light/dark choice; Google Maps on
   // Android has no built-in dark style, so it's always light there.
   const { resolvedScheme } = useThemePreference();
+  const insets = useSafeAreaInsets();
   const mapScheme = Platform.OS === 'ios' ? resolvedScheme : 'light';
   const webLineColor = WEB_LINE_COLOR[mapScheme];
 
@@ -361,6 +362,9 @@ export default function MapScreen() {
         onRegionChangeComplete={handleRegionChangeComplete}
         onLongPress={(event) => openCreateEvent(event.nativeEvent.coordinate)}
         userInterfaceStyle={mapScheme}
+        // Apple Maps puts its compass (shown while the map is rotated) in the
+        // top-right corner — nudge it down below the "+" button.
+        compassOffset={{ x: 0, y: FAB_SIZE + Spacing.two }}
         showsUserLocation={permissionState === 'granted'}>
         {myPosition &&
           clusters.map((cluster) => (
@@ -421,7 +425,11 @@ export default function MapScreen() {
         accessibilityRole="button"
         accessibilityLabel="Create an event at the center of the map"
         accessibilityHint="Or long-press anywhere on the map to pick a spot"
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
+        style={({ pressed }) => [
+          styles.fab,
+          { top: insets.top + Spacing.two },
+          pressed && styles.fabPressed,
+        ]}>
         <ThemedText style={styles.fabLabel}>+</ThemedText>
       </Pressable>
 
@@ -491,8 +499,7 @@ const styles = StyleSheet.create({
   banner: {
     position: 'absolute',
     left: Spacing.four,
-    // Leave room for the "+" button on the right.
-    right: Spacing.four + FAB_SIZE + Spacing.two,
+    right: Spacing.four,
     bottom: BottomTabInset + Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',
@@ -524,10 +531,11 @@ const styles = StyleSheet.create({
   groupMarkerText: {
     color: '#fdfbf7',
   },
+  // Top-right, clear of the tab bar; `top` is set inline from the safe-area
+  // inset so it sits just below the status bar / notch.
   fab: {
     position: 'absolute',
     right: Spacing.four,
-    bottom: BottomTabInset + Spacing.three,
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
