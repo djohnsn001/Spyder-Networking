@@ -1,13 +1,13 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ConnectButton } from '@/components/connect-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, BottomTabInset, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
   acceptConnectionRequest,
@@ -18,6 +18,7 @@ import {
   removeConnection,
   sendConnectionRequest,
 } from '@/lib/connections';
+import { getOrStartDirectConversation } from '@/lib/messages';
 import { getBusinessStageLabel } from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionRow, Profile } from '@/lib/types';
@@ -33,6 +34,8 @@ export default function UserProfileScreen() {
   const [connectionCount, setConnectionCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id || !myId) return;
@@ -94,6 +97,21 @@ export default function UserProfileScreen() {
       console.error('Failed to respond to request', error);
     } finally {
       setIsUpdating(false);
+    }
+  }
+
+  async function handleMessage() {
+    if (!profile) return;
+    setChatError(null);
+    setIsStartingChat(true);
+    try {
+      const conversationId = await getOrStartDirectConversation(profile.id);
+      router.push(`/chat/${conversationId}`);
+    } catch (error) {
+      console.error('Failed to start conversation', error);
+      setChatError('Could not start a conversation. Try again.');
+    } finally {
+      setIsStartingChat(false);
     }
   }
 
@@ -172,6 +190,34 @@ export default function UserProfileScreen() {
               onDecline={connectionId ? () => handleRespond(connectionId, false) : undefined}
             />
           ) : null}
+
+          {myId && status === 'accepted' ? (
+            <>
+              <Pressable
+                onPress={handleMessage}
+                disabled={isStartingChat}
+                accessibilityRole="button"
+                accessibilityLabel={`Message ${displayName}`}
+                style={({ pressed }) => [
+                  styles.messageButton,
+                  { opacity: isStartingChat ? 0.7 : 1 },
+                  pressed && styles.buttonPressed,
+                ]}>
+                {isStartingChat ? (
+                  <ActivityIndicator color="#fdfbf7" />
+                ) : (
+                  <ThemedText type="smallBold" style={styles.messageButtonLabel}>
+                    Message
+                  </ThemedText>
+                )}
+              </Pressable>
+              {chatError ? (
+                <ThemedText type="small" style={styles.errorText}>
+                  {chatError}
+                </ThemedText>
+              ) : null}
+            </>
+          ) : null}
         </ThemedView>
       </SafeAreaView>
     </ThemedView>
@@ -213,5 +259,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.five,
+  },
+  messageButton: {
+    marginTop: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.four,
+    backgroundColor: AccentColor,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageButtonLabel: {
+    color: '#fdfbf7',
+  },
+  buttonPressed: {
+    opacity: 0.85,
+  },
+  errorText: {
+    color: ErrorColor,
+    textAlign: 'center',
+    marginTop: Spacing.one,
   },
 });

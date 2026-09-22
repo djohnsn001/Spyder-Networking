@@ -236,6 +236,18 @@ export default function ChatScreen() {
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         {isLoading ? (
           <ActivityIndicator style={styles.loading} />
+        ) : !otherUser ? (
+          <View style={styles.centeredMessage}>
+            <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
+              This conversation couldn&apos;t be found.
+            </ThemedText>
+          </View>
+        ) : messages.length === 0 ? (
+          <View style={styles.centeredMessage}>
+            <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
+              No messages yet — say hello 👋
+            </ThemedText>
+          </View>
         ) : (
           <FlatList
             data={messages}
@@ -360,6 +372,12 @@ const styles = StyleSheet.create({
   },
   loadingMore: {
     marginVertical: Spacing.three,
+  },
+  centeredMessage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.four,
   },
   headerTitle: {
     flexDirection: 'row',

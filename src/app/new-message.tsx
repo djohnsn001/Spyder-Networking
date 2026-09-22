@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { ErrorColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { fetchConnectionProfiles } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
@@ -19,6 +19,7 @@ export default function NewMessageScreen() {
   const [connections, setConnections] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!myId) return;
@@ -30,12 +31,14 @@ export default function NewMessageScreen() {
 
   async function handleSelect(profile: Profile) {
     if (startingId) return;
+    setErrorMessage(null);
     setStartingId(profile.id);
     try {
       const conversationId = await getOrStartDirectConversation(profile.id);
       router.replace(`/chat/${conversationId}`);
     } catch (error) {
       console.error('Failed to start conversation', error);
+      setErrorMessage('Could not start that conversation. Try again.');
       setStartingId(null);
     }
   }
@@ -54,6 +57,12 @@ export default function NewMessageScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        {errorMessage ? (
+          <ThemedText type="small" style={styles.errorText}>
+            {errorMessage}
+          </ThemedText>
+        ) : null}
 
         {isLoading ? (
           <ActivityIndicator style={styles.loading} />
@@ -120,6 +129,11 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     marginTop: Spacing.five,
+  },
+  errorText: {
+    color: ErrorColor,
+    textAlign: 'center',
+    marginBottom: Spacing.two,
   },
   row: {
     flexDirection: 'row',
