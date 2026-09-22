@@ -156,6 +156,8 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   rowTextCol: {
+    flex: 1,
+    marginRight: Spacing.three,
     gap: 2,
   },
   logoutLabel: {
