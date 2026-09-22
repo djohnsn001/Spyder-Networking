@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ThemePreferenceProvider, useThemePreference } from '@/lib/theme-preference';
+import { UnreadMessagesProvider } from '@/lib/unread-messages';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -23,7 +24,9 @@ function RootNavigator() {
         <Stack.Protected guard={hasUsername}>
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="new-message" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
+          <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />
           <Stack.Screen
             name="connections"
@@ -49,7 +52,9 @@ function RootLayoutThemed() {
     <ThemeProvider value={resolvedScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <AuthProvider>
-        <RootNavigator />
+        <UnreadMessagesProvider>
+          <RootNavigator />
+        </UnreadMessagesProvider>
       </AuthProvider>
     </ThemeProvider>
   );

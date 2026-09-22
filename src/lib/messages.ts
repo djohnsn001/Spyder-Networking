@@ -5,6 +5,14 @@ import type { Message, Profile } from '@/lib/types';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
+// Supabase treats a channel name as a single shared object — calling
+// .channel() twice with the same name hands back the same (already
+// subscribed) channel, and subscribing twice or adding listeners after the
+// fact throws. Suffixing with a counter gives every subscribeTo* call its
+// own channel, even when two callers both want "the inbox" or "the same
+// conversation" at once.
+let channelSequence = 0;
+
 export type ConversationSummary = {
   conversationId: string;
   otherUser: Profile;
@@ -186,7 +194,7 @@ export function subscribeToConversationMessages(
   onInsert: (message: Message) => void,
 ): () => void {
   const channel = supabase
-    .channel(`messages:conversation:${conversationId}`)
+    .channel(`messages:conversation:${conversationId}:${channelSequence++}`)
     .on(
       'postgres_changes',
       {
@@ -210,7 +218,7 @@ export function subscribeToConversationMessages(
 // message from a conversation the caller isn't a member of.
 export function subscribeToInboxMessages(onInsert: (message: Message) => void): () => void {
   const channel = supabase
-    .channel('messages:inbox')
+    .channel(`messages:inbox:${channelSequence++}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages' },

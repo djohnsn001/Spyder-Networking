@@ -1,9 +1,11 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 import { useTheme } from '@/hooks/use-theme';
+import { useUnreadMessages } from '@/lib/unread-messages';
 
 export default function AppTabsLayout() {
   const colors = useTheme();
+  const { unreadCount } = useUnreadMessages();
 
   return (
     <NativeTabs
@@ -33,6 +35,17 @@ export default function AppTabsLayout() {
           sf={{ default: 'map', selected: 'map.fill' }}
           md={{ default: 'map', selected: 'map' }}
         />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="messages">
+        <NativeTabs.Trigger.Label>Messages</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'bubble.left', selected: 'bubble.left.fill' }}
+          md={{ default: 'chat_bubble_outline', selected: 'chat_bubble' }}
+        />
+        <NativeTabs.Trigger.Badge hidden={unreadCount === 0}>
+          {unreadCount > 99 ? '99+' : String(unreadCount)}
+        </NativeTabs.Trigger.Badge>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
