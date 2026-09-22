@@ -39,3 +39,28 @@ export type ConnectionEdge = {
   user_a: string;
   user_b: string;
 };
+
+export type Conversation = {
+  id: string;
+  is_group: boolean;
+  user_a_id: string | null;
+  user_b_id: string | null;
+  created_at: string;
+  last_message_at: string;
+  last_message_id: string | null;
+};
+
+export type ConversationParticipant = {
+  conversation_id: string;
+  user_id: string;
+  last_read_at: string;
+  created_at: string;
+};
+
+export type Message = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+};
