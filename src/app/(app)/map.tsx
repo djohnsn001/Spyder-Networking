@@ -48,8 +48,8 @@ const BOISE_REGION = {
 const WEB_LINE_WIDTH = 1.75;
 // Your own spokes are solid; lines between two of your connections
 // (mutuals) are a little fainter so your direct connections stand out.
-const SPOKE_LINE_COLOR = '#FAF5EC';
-const MUTUAL_LINE_COLOR = 'rgba(250,245,236,0.8)';
+const SPOKE_LINE_COLOR = '#FFFFFF';
+const MUTUAL_LINE_COLOR = 'rgba(255,255,255,0.65)';
 // Each white line sits on a slightly wider dark outline ("casing"), the
 // same trick map apps use for routes — it keeps white lines readable on
 // light maps as well as dark ones.
