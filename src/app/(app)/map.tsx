@@ -42,16 +42,14 @@ const BOISE_REGION = {
   longitudeDelta: 0.1,
 };
 
-// Fine threads, so the web reads as a delicate layer over the map rather
-// than heavy route lines. Tweak the thickness here — both spokes and mutual
-// lines use it.
-const WEB_LINE_WIDTH = 1.25;
-// Thin lines need strong contrast: cream over a dark map, near-black ink
-// over a light one.
-const WEB_LINE_COLOR = {
-  dark: '#FAF5EC',
-  light: 'rgba(42,33,28,0.85)',
-} as const;
+// Fine white threads, so the web reads as a delicate layer over the map
+// rather than heavy route lines. Tweak the thickness here — both spokes and
+// mutual lines use it.
+const WEB_LINE_WIDTH = 1.75;
+// Your own spokes are solid; lines between two of your connections
+// (mutuals) are fainter so your direct connections stand out.
+const SPOKE_LINE_COLOR = '#FAF5EC';
+const MUTUAL_LINE_COLOR = 'rgba(250,245,236,0.55)';
 
 // How long the map has to sit still after a pan/zoom before events for the
 // new area are fetched, so a long swipe triggers one request, not dozens.
@@ -151,7 +149,6 @@ export default function MapScreen() {
   const { resolvedScheme } = useThemePreference();
   const insets = useSafeAreaInsets();
   const mapScheme = Platform.OS === 'ios' ? resolvedScheme : 'light';
-  const webLineColor = WEB_LINE_COLOR[mapScheme];
 
   // Recluster continuously while the user pinches/pans, not just once they
   // let go — throttled so a fast gesture doesn't trigger dozens of
@@ -371,7 +368,7 @@ export default function MapScreen() {
             <Polyline
               key={`spoke-${cluster.key}`}
               coordinates={[myPosition, cluster.centroid]}
-              strokeColor={webLineColor}
+              strokeColor={SPOKE_LINE_COLOR}
               strokeWidth={WEB_LINE_WIDTH}
             />
           ))}
@@ -380,7 +377,7 @@ export default function MapScreen() {
           <Polyline
             key={`edge-${line.key}`}
             coordinates={line.coordinates}
-            strokeColor={webLineColor}
+            strokeColor={MUTUAL_LINE_COLOR}
             strokeWidth={WEB_LINE_WIDTH}
           />
         ))}
