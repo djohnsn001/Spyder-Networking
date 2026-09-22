@@ -44,6 +44,7 @@
     "seed:map": "node ./scripts/seed-map-data.js",
     "seed:map:connections": "node ./scripts/add-seed-connections.js",
     "seed:map:locations": "node ./scripts/update-seed-locations.js",
+    "seed:map:avatars": "node ./scripts/update-seed-avatars.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
