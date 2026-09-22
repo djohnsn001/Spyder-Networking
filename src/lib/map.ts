@@ -121,18 +121,20 @@ export function resolveBubbleOverlaps(
 // can merge further as you zoom out. longitudeDelta is how many degrees of
 // longitude are visible edge-to-edge, i.e. it shrinks as you zoom in.
 //
-// The floor is deliberately city-sized, not a few hundred meters: zooming
-// in must never be able to split a group down to something that reads as
-// one person's exact spot. resolveBubbleOverlaps separately guarantees
-// bubbles never visually crowd together — this floor is what guarantees
-// grouping never gets finer than "somewhere in this city," no matter how
-// far in you zoom.
-// Small on purpose: this only controls merging *beyond* the city floor
-// below, i.e. combining separate cities together, which should take a lot
-// of zooming out — the web staying spread out into distinct areas is more
-// important than aggressively consolidating them.
+// The floor is deliberately neighborhood-sized, not a few hundred meters:
+// zooming in must never be able to split a group down to something that
+// reads as one person's exact spot. It sits above the ~1.1km rounding
+// update_my_location() already applies server-side, so the map never shows
+// anything finer than what's stored. resolveBubbleOverlaps separately
+// guarantees bubbles never visually crowd together — this floor is what
+// guarantees grouping never gets finer than "somewhere in this
+// neighborhood," no matter how far in you zoom.
+// Small on purpose: this only controls merging *beyond* the neighborhood
+// floor below, i.e. combining separate areas together, which should take a
+// lot of zooming out — the web staying spread out into distinct areas is
+// more important than aggressively consolidating them.
 const CLUSTER_ZOOM_FACTOR = 0.03;
-const MIN_CLUSTER_DISTANCE_DEGREES = 0.05; // ~5.5km — roughly a city's footprint
+const MIN_CLUSTER_DISTANCE_DEGREES = 0.018; // ~2km — roughly a neighborhood's footprint
 
 export function regionToClusterDistance(longitudeDelta: number): number {
   return Math.max(longitudeDelta * CLUSTER_ZOOM_FACTOR, MIN_CLUSTER_DISTANCE_DEGREES);
