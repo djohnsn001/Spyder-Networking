@@ -100,6 +100,32 @@ export async function fetchPendingRequests(userId: string): Promise<PendingReque
     .filter((request): request is PendingRequest => request !== null);
 }
 
+// Profiles of everyone the current user is accepted-connected with.
+export async function fetchConnectionProfiles(userId: string): Promise<Profile[]> {
+  const { data: rows, error } = await supabase
+    .from('connections')
+    .select('requester_id, addressee_id')
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  if (error) {
+    console.error('Failed to load connections', error);
+    return [];
+  }
+  if (!rows || rows.length === 0) return [];
+
+  const otherIds = rows.map((row) => (row.requester_id === userId ? row.addressee_id : row.requester_id));
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', otherIds);
+  if (profilesError) {
+    console.error('Failed to load connection profiles', profilesError);
+    return [];
+  }
+  return profiles ?? [];
+}
+
 export async function fetchConnectionCount(userId: string): Promise<number> {
   const { data, error } = await supabase.rpc('get_connection_count', { target_user: userId });
   if (error) {
