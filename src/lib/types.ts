@@ -20,8 +20,20 @@ export type ConnectionRow = {
   requester_id: string;
   addressee_id: string;
   status: 'pending' | 'accepted';
+  level: ConnectionLevel;
+  method: ConnectionMethod;
+  // When/where two people met in person (city name only). Null for acquaintances.
+  met_at: string | null;
+  met_city: string | null;
+  // Undo window after an in-person connect; server-managed.
+  undo_until: string | null;
+  undo_snapshot: Record<string, unknown> | null;
   created_at: string;
 };
+
+// in_person can only be set by the server (QR scan or phone bump).
+export type ConnectionLevel = 'acquaintance' | 'in_person';
+export type ConnectionMethod = 'request' | 'qr' | 'bump' | 'legacy';
 
 export type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
 

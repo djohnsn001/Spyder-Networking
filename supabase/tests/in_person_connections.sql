@@ -1,0 +1,272 @@
+-- In-person connection tests (plain SQL; pgTAP isn't set up in this project).
+--
+-- Safe to run against the live database: everything happens inside one DO
+-- block that ALWAYS ends by raising an exception, which rolls back every test
+-- user and row it created. The exception message is the test report — look
+-- for "TEST RESULTS" and any FAIL lines.
+--
+--   npx supabase db query --linked -f supabase/tests/in_person_connections.sql
+--
+-- Sections: A = guard trigger, B = _connect_in_person + undo.
+-- (C = QR and D = bump get added with their phases.)
+
+do $tests$
+declare
+  u1 uuid := gen_random_uuid();
+  u2 uuid := gen_random_uuid();
+  u3 uuid := gen_random_uuid();
+  u4 uuid := gen_random_uuid();
+  report text := '';
+  fails int := 0;
+  ok boolean;
+  err text;
+  v jsonb;
+  c public.connections%rowtype;
+  cid uuid;
+  n int;
+begin
+  -- ---------- setup (as admin) ----------
+  insert into auth.users (id, email, aud, role)
+  values
+    (u1, u1 || '@test.bolas.invalid', 'authenticated', 'authenticated'),
+    (u2, u2 || '@test.bolas.invalid', 'authenticated', 'authenticated'),
+    (u3, u3 || '@test.bolas.invalid', 'authenticated', 'authenticated'),
+    (u4, u4 || '@test.bolas.invalid', 'authenticated', 'authenticated');
+
+  -- =====================================================================
+  -- A. Guard trigger
+  -- =====================================================================
+
+  -- A1: a client insert asking for in_person is forced down to acquaintance.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  insert into public.connections (requester_id, addressee_id, level, method, met_at, met_city)
+  values (u1, u2, 'in_person', 'qr', now(), 'Boise')
+  returning * into c;
+  ok := c.level = 'acquaintance' and c.method = 'request' and c.met_at is null
+        and c.met_city is null and c.status = 'pending';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A1 client insert of in_person is forced to acquaintance/request';
+  if not ok then fails := fails + 1; end if;
+
+  -- A2: the addressee can still accept a request.
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  update public.connections set status = 'accepted' where id = c.id;
+  select * into c from public.connections where id = c.id;
+  ok := c.status = 'accepted' and c.level = 'acquaintance';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A2 addressee can accept a request (stays acquaintance)';
+  if not ok then fails := fails + 1; end if;
+
+  -- A3: the addressee can't upgrade the level directly.
+  err := null;
+  begin
+    update public.connections set level = 'in_person', met_at = now() where id = c.id;
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A3 direct update of level is rejected (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- A4: nor any of the other protected columns.
+  err := null;
+  begin
+    update public.connections set met_city = 'Boise' where id = c.id;
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A4 direct update of met_city is rejected (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  err := null;
+  begin
+    update public.connections set undo_until = now() + interval '1 hour' where id = c.id;
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A5 direct update of undo_until is rejected (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- A6: clients can't call the internal functions.
+  err := null;
+  begin
+    perform public._connect_in_person(u2, u1, 'qr', 'Boise');
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A6 client cannot call _connect_in_person (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- A7: removing an accepted connection still works.
+  delete from public.connections where id = c.id;
+  get diagnostics n = row_count;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A7 either side can remove a connection';
+  if not ok then fails := fails + 1; end if;
+
+  -- A8: cancel (requester deletes own pending request).
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  insert into public.connections (requester_id, addressee_id) values (u1, u3) returning id into cid;
+  delete from public.connections where id = cid;
+  get diagnostics n = row_count;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A8 requester can cancel a pending request';
+  if not ok then fails := fails + 1; end if;
+
+  -- A9: decline (addressee deletes a pending request).
+  insert into public.connections (requester_id, addressee_id) values (u1, u3) returning id into cid;
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  delete from public.connections where id = cid;
+  get diagnostics n = row_count;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A9 addressee can decline a pending request';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- B. _connect_in_person + undo
+  -- (_connect_in_person is called as admin here; clients reach it through
+  -- the QR/bump RPCs added in later phases.)
+  -- =====================================================================
+
+  -- Fixtures made through the normal client flow:
+  --   u1-u2 accepted acquaintance, u1-u3 pending (u1 -> u3), u1-u4 nothing.
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  insert into public.connections (requester_id, addressee_id) values (u1, u2);
+  insert into public.connections (requester_id, addressee_id) values (u1, u3);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  update public.connections set status = 'accepted' where requester_id = u1 and addressee_id = u2;
+  reset role;
+
+  -- B1: brand-new pair -> created.
+  v := public._connect_in_person(u4, u1, 'qr', '  Boise  ');
+  select * into c from public.connections where id = (v ->> 'connection_id')::uuid;
+  ok := v ->> 'outcome' = 'created' and c.status = 'accepted' and c.level = 'in_person'
+        and c.method = 'qr' and c.met_at is not null and c.met_city = 'Boise'
+        and c.undo_snapshot is null and c.undo_until > now();
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B1 new pair -> created (accepted, in_person, city trimmed)';
+  if not ok then fails := fails + 1; end if;
+
+  -- B2: accepted acquaintance -> upgraded, snapshot saved.
+  v := public._connect_in_person(u2, u1, 'bump', 'Meridian');
+  select * into c from public.connections where id = (v ->> 'connection_id')::uuid;
+  ok := v ->> 'outcome' = 'upgraded' and c.level = 'in_person' and c.method = 'bump'
+        and c.undo_snapshot ->> 'status' = 'accepted' and c.undo_snapshot ->> 'level' = 'acquaintance';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B2 acquaintance -> upgraded with snapshot';
+  if not ok then fails := fails + 1; end if;
+
+  -- B3: pending request -> upgraded to accepted in_person.
+  v := public._connect_in_person(u3, u1, 'qr', null);
+  select * into c from public.connections where id = (v ->> 'connection_id')::uuid;
+  ok := v ->> 'outcome' = 'upgraded' and c.status = 'accepted' and c.level = 'in_person'
+        and c.met_city is null and c.undo_snapshot ->> 'status' = 'pending';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B3 pending -> upgraded (null city allowed)';
+  if not ok then fails := fails + 1; end if;
+
+  -- B4: already in_person -> already_connected, nothing changes.
+  select * into c from public.connections where requester_id = u4 and addressee_id = u1;
+  v := public._connect_in_person(u1, u4, 'bump', 'Nampa');
+  ok := v ->> 'outcome' = 'already_connected'
+        and (select met_city from public.connections where id = c.id) = 'Boise';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B4 already in_person -> already_connected, unchanged';
+  if not ok then fails := fails + 1; end if;
+
+  -- B5: self-connect is refused.
+  err := null;
+  begin
+    perform public._connect_in_person(u1, u1, 'qr', null);
+  exception when others then err := sqlerrm;
+  end;
+  ok := err = 'self_connect';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B5 self-connect refused';
+  if not ok then fails := fails + 1; end if;
+
+  -- B6: a third user can't undo someone else's connection.
+  cid := (select id from public.connections where requester_id = u1 and addressee_id = u2);
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  v := public.undo_in_person_connection(cid);
+  ok := v ->> 'outcome' = 'not_found';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B6 undo by a third user -> not_found';
+  if not ok then fails := fails + 1; end if;
+
+  -- B7: undo an upgrade (u2 does it) -> restored to accepted acquaintance/legacy fields.
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.undo_in_person_connection(cid);
+  reset role;
+  select * into c from public.connections where id = cid;
+  ok := v ->> 'outcome' = 'undone' and c.status = 'accepted' and c.level = 'acquaintance'
+        and c.method = 'request' and c.met_at is null and c.undo_until is null and c.undo_snapshot is null;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B7 undo of acquaintance upgrade restores it';
+  if not ok then fails := fails + 1; end if;
+
+  -- B8: undo the pending upgrade -> back to pending.
+  cid := (select id from public.connections where requester_id = u1 and addressee_id = u3);
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.undo_in_person_connection(cid);
+  reset role;
+  select * into c from public.connections where id = cid;
+  ok := v ->> 'outcome' = 'undone' and c.status = 'pending' and c.level = 'acquaintance';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B8 undo of pending upgrade restores pending';
+  if not ok then fails := fails + 1; end if;
+
+  -- B9: undo after the window -> too_late. (Push undo_until into the past as admin.)
+  cid := (select id from public.connections where requester_id = u4 and addressee_id = u1);
+  perform set_config('bolas.trusted_write', 'on', true);
+  update public.connections set undo_until = now() - interval '1 second' where id = cid;
+  perform set_config('bolas.trusted_write', 'off', true);
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  v := public.undo_in_person_connection(cid);
+  ok := v ->> 'outcome' = 'too_late';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B9 undo after window -> too_late';
+  if not ok then fails := fails + 1; end if;
+
+  -- B10: an in_person row can't be pushed back to pending by a client
+  -- (guard allows status edits, but the check constraint blocks this one).
+  -- u1 is the addressee here (only the addressee may update, per RLS).
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  err := null;
+  begin
+    update public.connections set status = 'pending' where id = cid;
+  exception when others then err := sqlstate;
+  end;
+  reset role;
+  ok := err = '23514';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B10 client cannot set an in_person row to pending (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- B11: undo a brand-new connection -> row deleted.
+  v := public._connect_in_person(u2, u3, 'bump', 'Boise');
+  cid := (v ->> 'connection_id')::uuid;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.undo_in_person_connection(cid);
+  reset role;
+  ok := v ->> 'outcome' = 'undone' and not exists (select 1 from public.connections where id = cid);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B11 undo of new connection deletes it';
+  if not ok then fails := fails + 1; end if;
+
+  -- B12: counts stay right. u1 now has: u2 accepted, u4 accepted (in_person), u3 pending.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  n := public.get_connection_count(u1);
+  reset role;
+  ok := n = 2;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B12 connection count counts both levels (got ' || n || ', want 2)';
+  if not ok then fails := fails + 1; end if;
+
+  -- B13: anon can't undo.
+  perform set_config('role', 'anon', true);
+  err := null;
+  begin
+    perform public.undo_in_person_connection(cid);
+  exception when others then err := sqlstate;
+  end;
+  reset role;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B13 anon cannot call undo (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- Always roll back: nothing from this run is kept.
+  raise exception 'TEST RESULTS: % failed (rolled back, nothing saved)%', fails, report;
+end;
+$tests$;
