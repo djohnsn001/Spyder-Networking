@@ -7,8 +7,8 @@
 --
 --   npx supabase db query --linked -f supabase/tests/in_person_connections.sql
 --
--- Sections: A = guard trigger, B = _connect_in_person + undo.
--- (C = QR and D = bump get added with their phases.)
+-- Sections: A = guard trigger, B = _connect_in_person + undo, C = QR tokens.
+-- (D = bump gets added with its phase.)
 
 do $tests$
 declare
@@ -24,6 +24,8 @@ declare
   c public.connections%rowtype;
   cid uuid;
   n int;
+  tok text;
+  tok2 text;
 begin
   -- ---------- setup (as admin) ----------
   insert into auth.users (id, email, aud, role)
@@ -264,6 +266,132 @@ begin
   reset role;
   ok := err = '42501';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B13 anon cannot call undo (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- C. QR tokens
+  -- State coming in: u1-u2 accepted acquaintance, u1-u3 pending,
+  -- u4-u1 in_person.
+  -- =====================================================================
+
+  -- C1: create a token.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  v := public.create_connect_token();
+  tok := v ->> 'token';
+  ok := v ->> 'outcome' = 'ok' and tok ~ '^[0-9a-f]{32}$'
+        and (v ->> 'expires_at')::timestamptz = now() + interval '60 seconds';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C1 token is 32 hex chars, expires in 60s';
+  if not ok then fails := fails + 1; end if;
+
+  -- C2: u2 scans it -> their acquaintance is upgraded to in_person via qr.
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok, 'Eagle');
+  reset role;
+  select * into c from public.connections where id = (v ->> 'connection_id')::uuid;
+  ok := v ->> 'outcome' = 'upgraded' and (v ->> 'other_user_id')::uuid = u1
+        and (v -> 'other_profile' ->> 'id')::uuid = u1
+        and c.level = 'in_person' and c.method = 'qr' and c.met_city = 'Eagle';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C2 redeem works, returns owner profile, upgrades via qr';
+  if not ok then fails := fails + 1; end if;
+
+  -- C3: a second scan of the same code -> used.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok, null);
+  ok := v ->> 'outcome' = 'used';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C3 second redeem -> used';
+  if not ok then fails := fails + 1; end if;
+
+  -- C4: the owner sees used + who scanned.
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  v := public.get_connect_token_status(tok);
+  ok := v ->> 'status' = 'used' and (v -> 'result' ->> 'other_user_id')::uuid = u2
+        and (v -> 'other_profile' ->> 'id')::uuid = u2 and v -> 'result' ->> 'outcome' = 'upgraded';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C4 owner status shows used + scanner profile';
+  if not ok then fails := fails + 1; end if;
+
+  -- C5: nobody else can read a code's status.
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.get_connect_token_status(tok);
+  ok := v ->> 'status' = 'not_found';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C5 non-owner status -> not_found';
+  if not ok then fails := fails + 1; end if;
+
+  -- C6: scanning your own code -> self.
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  tok2 := public.create_connect_token() ->> 'token';
+  v := public.redeem_connect_token(tok2, null);
+  ok := v ->> 'outcome' = 'self';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C6 own code -> self';
+  if not ok then fails := fails + 1; end if;
+
+  -- C7: an expired code -> expired. (Age it as admin.)
+  reset role;
+  update public.connect_tokens set expires_at = now() - interval '1 second' where token = tok2;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok2, null);
+  ok := v ->> 'outcome' = 'expired';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C7 expired code -> expired';
+  if not ok then fails := fails + 1; end if;
+
+  -- C8: junk and unknown codes -> invalid.
+  ok := public.redeem_connect_token('not a token', null) ->> 'outcome' = 'invalid'
+        and public.redeem_connect_token(repeat('a', 32), null) ->> 'outcome' = 'invalid'
+        and public.redeem_connect_token(null, null) ->> 'outcome' = 'invalid';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C8 junk / unknown code -> invalid';
+  if not ok then fails := fails + 1; end if;
+
+  -- C9: no city from the phone -> falls back to a profile city.
+  -- u3 has no profile city, so it falls through to the owner's (u1 = Boise).
+  reset role;
+  update public.profiles set city = 'Boise' where id = u1;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  tok := public.create_connect_token() ->> 'token';
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok, '   ');
+  ok := v ->> 'outcome' = 'upgraded' and v ->> 'met_city' = 'Boise';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C9 pending -> upgraded, city falls back to owner profile';
+  if not ok then fails := fails + 1; end if;
+
+  -- C10: scanning someone you already met -> already_connected.
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  tok := public.create_connect_token() ->> 'token';
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok, 'Boise');
+  ok := v ->> 'outcome' = 'already_connected' and (v -> 'other_profile' ->> 'id')::uuid = u1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C10 already met -> already_connected';
+  if not ok then fails := fails + 1; end if;
+
+  -- C11: more than 6 codes a minute -> rate_limited.
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  n := 0;
+  for i in 1..6 loop
+    if public.create_connect_token() ->> 'outcome' = 'ok' then n := n + 1; end if;
+  end loop;
+  v := public.create_connect_token();
+  ok := n = 6 and v ->> 'outcome' = 'rate_limited';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C11 7th code in a minute -> rate_limited';
+  if not ok then fails := fails + 1; end if;
+
+  -- C12: clients can't read the table directly (RLS, no policies).
+  select count(*) into n from public.connect_tokens;
+  ok := n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C12 direct select on connect_tokens sees nothing (got ' || n || ')';
+  if not ok then fails := fails + 1; end if;
+  reset role;
+
+  -- C13: anon can't call any of the QR functions.
+  perform set_config('role', 'anon', true);
+  n := 0;
+  begin perform public.create_connect_token(); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.redeem_connect_token(tok, null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.get_connect_token_status(tok); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  reset role;
+  ok := n = 3;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C13 anon blocked from all 3 QR functions (' || n || '/3)';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.
