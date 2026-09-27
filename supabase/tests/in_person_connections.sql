@@ -8,7 +8,7 @@
 --   npx supabase db query --linked -f supabase/tests/in_person_connections.sql
 --
 -- Sections: A = guard trigger, B = _connect_in_person + undo, C = QR tokens,
--- D = bumps.
+-- D = bumps, E = Web Map filtering.
 
 do $tests$
 declare
@@ -549,6 +549,46 @@ begin
   reset role;
   ok := n = 2;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D12 anon blocked from both bump functions (' || n || '/2)';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- E. Web Map shows in-person connections only
+  -- State coming in: u1 in_person with u2, u3, u4; u2-u3 in_person (bump).
+  -- Add an acquaintance u4-u2 through the normal request flow.
+  -- =====================================================================
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  insert into public.connections (requester_id, addressee_id) values (u4, u2);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  update public.connections set status = 'accepted' where requester_id = u4 and addressee_id = u2;
+  reset role;
+  insert into public.user_locations (user_id, lat, lng)
+  values (u1, 10.0, -140.0), (u2, 10.01, -140.0), (u3, 10.02, -140.0), (u4, 10.03, -140.0);
+
+  -- E1: u4 sees themself + u1 (in person), not u2 (acquaintance).
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  ok := (select array_agg(id order by id) from public.get_connection_locations())
+        = (select array_agg(x order by x) from unnest(array[u4, u1]) x);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E1 map pins: in-person yes, acquaintance no';
+  if not ok then fails := fails + 1; end if;
+
+  -- E2: u1 sees all four (everyone is in person with u1).
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_connection_locations();
+  ok := n = 4;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E2 map pins for u1: all 4 (got ' || n || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- E3: u1's lines between connections: u2-u3 (met in person) only, not
+  -- u2-u4 (just acquaintances).
+  select count(*) into n from public.get_connection_edges();
+  ok := n = 1 and exists (
+    select 1 from public.get_connection_edges()
+    where user_a = least(u2, u3) and user_b = greatest(u2, u3)
+  );
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E3 map lines only between people who met in person (got ' || n || ')';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.

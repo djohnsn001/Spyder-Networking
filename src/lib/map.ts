@@ -205,16 +205,18 @@ export async function updateMyLocation(lat: number, lng: number) {
   if (error) throw error;
 }
 
-// Pins for the Web Map: the caller's accepted connections who have location
-// sharing on, plus the caller's own pin if their own sharing is on.
+// Pins for the Web Map: the caller's in-person connections (not
+// acquaintances) who have location sharing on, plus the caller's own pin if
+// their own sharing is on.
 export async function fetchConnectionLocations(): Promise<ConnectionLocation[]> {
   const { data, error } = await supabase.rpc('get_connection_locations');
   if (error) throw error;
   return data ?? [];
 }
 
-// Pairs of the caller's connections who are also connected to each other —
-// the lines to draw between mutuals, separate from the caller's own spokes.
+// Pairs of the caller's in-person connections who have also met each other
+// in person — the lines to draw between mutuals, separate from the caller's
+// own spokes.
 export async function fetchConnectionEdges(): Promise<ConnectionEdge[]> {
   const { data, error } = await supabase.rpc('get_connection_edges');
   if (error) throw error;
