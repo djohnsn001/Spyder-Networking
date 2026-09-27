@@ -232,12 +232,12 @@ export default function UserProfileScreen() {
             <Pressable
               onPress={() => router.push('/connect')}
               accessibilityRole="button"
-              accessibilityLabel="Connect in person to add them to your map"
+              accessibilityLabel="Tap phones to add them to your map"
               style={({ pressed }) => pressed && styles.buttonPressed}>
               <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
                 Met in real life?{' '}
                 <ThemedText type="smallBold" style={styles.accentText}>
-                  Connect in person
+                  Tap phones
                 </ThemedText>{' '}
                 to add them to your map
               </ThemedText>

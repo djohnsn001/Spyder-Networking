@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MatchCard } from '@/components/connect/match-card';
 import { MyCodePanel } from '@/components/connect/my-code-panel';
 import { ScanPanel } from '@/components/connect/scan-panel';
+import { TapPanel } from '@/components/connect/tap-panel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -26,7 +27,7 @@ function isTab(value: unknown): value is Tab {
 
 export default function ConnectScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
-  const [tab, setTab] = useState<Tab>(isTab(params.tab) ? params.tab : 'code');
+  const [tab, setTab] = useState<Tab>(isTab(params.tab) ? params.tab : 'tap');
   const [match, setMatch] = useState<InPersonMatch | null>(null);
 
   // Camera, location and polling only run while this screen is on top and
@@ -97,14 +98,12 @@ export default function ConnectScreen() {
 
         <ScrollView contentContainerStyle={styles.body}>
           {tab === 'tap' ? (
-            <View style={styles.tapPlaceholder}>
-              <ThemedText type="smallBold" style={styles.center}>
-                Tapping phones is almost ready
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-                For now, show your code or scan theirs.
-              </ThemedText>
-            </View>
+            <TapPanel
+              active={isLive && !match}
+              location={location}
+              onMatched={handleMatched}
+              onUseCode={() => setTab('code')}
+            />
           ) : null}
           {tab === 'code' ? (
             <MyCodePanel active={isLive && !match} onMatched={handleMatched} />
@@ -158,14 +157,6 @@ const styles = StyleSheet.create({
   body: {
     paddingVertical: Spacing.five,
     alignItems: 'center',
-  },
-  tapPlaceholder: {
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.five,
-  },
-  center: {
-    textAlign: 'center',
   },
   pressed: {
     opacity: 0.7,

@@ -54,6 +54,12 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Bolas detects when you tap phones with someone."
+        }
       ]
     ],
     "experiments": {
