@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
+import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
 
@@ -139,7 +140,8 @@ export default function SettingsScreen() {
               <View style={styles.rowTextCol}>
                 <ThemedText type="default">Show me on the map</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Let your connections see your approximate location on the Web Map
+                  Let your {CONNECTION_LEVEL_LABEL_IN_SENTENCE.in_person} see your approximate
+                  location on the Web Map
                 </ThemedText>
               </View>
               <Switch
@@ -148,6 +150,17 @@ export default function SettingsScreen() {
                 disabled={isUpdatingLocationSharing}
                 trackColor={{ true: AccentColor }}
               />
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.rowTextCol}>
+                <ThemedText type="default">Location &amp; tapping</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  When you tap phones, Bolas uses your location only to find the person
+                  you&apos;re with. It&apos;s deleted within minutes, and only the city you met
+                  in is kept.
+                </ThemedText>
+              </View>
             </View>
           </ThemedView>
 

@@ -1,3 +1,4 @@
+import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
@@ -17,6 +18,13 @@ import { connectUrlFor } from '@/lib/connect/parse-connect-url';
 import { useRotatingToken } from '@/lib/connect/use-rotating-token';
 
 const QR_SIZE = 220;
+
+// Rendered only while the code is on screen, so the screen can sleep again
+// as soon as you leave the tab. (Hooks can't be called conditionally.)
+function StayAwake() {
+  useKeepAwake('connect-my-code');
+  return null;
+}
 
 export function MyCodePanel({
   active,
@@ -43,6 +51,7 @@ export function MyCodePanel({
 
   return (
     <View style={styles.container}>
+      {active ? <StayAwake /> : null}
       {/* Always black on white: some scanners can't read inverted codes. */}
       <View style={styles.qrCard}>
         {token ? (
