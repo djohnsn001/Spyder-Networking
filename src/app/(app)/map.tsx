@@ -35,6 +35,7 @@ import {
   updateMyLocation,
   type LocationCluster,
 } from '@/lib/map';
+import { DARK_MAP_STYLE, LIGHT_MAP_STYLE } from '@/lib/map-style';
 import { useThemePreference } from '@/lib/theme-preference';
 import type { ConnectionEdge, ConnectionLocation, EventSummary } from '@/lib/types';
 
@@ -150,11 +151,11 @@ export default function MapScreen() {
   const eventFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventRequestIdRef = useRef(0);
 
-  // Apple Maps can follow the app's own light/dark choice; Google Maps on
-  // Android has no built-in dark style, so it's always light there.
+  // Both platforms follow the app's own light/dark choice: Apple Maps via
+  // userInterfaceStyle, Google Maps (Android) via our own custom style.
   const { resolvedScheme } = useThemePreference();
   const insets = useSafeAreaInsets();
-  const mapScheme = Platform.OS === 'ios' ? resolvedScheme : 'light';
+  const androidMapStyle = resolvedScheme === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
 
   // Recluster continuously while the user pinches/pans, not just once they
   // let go — throttled so a fast gesture doesn't trigger dozens of
@@ -386,7 +387,13 @@ export default function MapScreen() {
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
         onLongPress={(event) => openCreateEvent(event.nativeEvent.coordinate)}
-        userInterfaceStyle={mapScheme}
+        userInterfaceStyle={resolvedScheme}
+        // Keep the map in the background so the web lines pop. iOS gets
+        // Apple's faded "muted" map; Android gets a one-color custom style.
+        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+        customMapStyle={Platform.OS === 'android' ? androidMapStyle : undefined}
+        showsPointsOfInterests={false}
+        showsBuildings={false}
         // Apple Maps puts its compass (shown while the map is rotated) in the
         // top-right corner — nudge it down below the "+" button.
         compassOffset={{ x: 0, y: FAB_SIZE + Spacing.two }}
