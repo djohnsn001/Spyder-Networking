@@ -7,8 +7,8 @@
 --
 --   npx supabase db query --linked -f supabase/tests/in_person_connections.sql
 --
--- Sections: A = guard trigger, B = _connect_in_person + undo, C = QR tokens.
--- (D = bump gets added with its phase.)
+-- Sections: A = guard trigger, B = _connect_in_person + undo, C = QR tokens,
+-- D = bumps.
 
 do $tests$
 declare
@@ -26,6 +26,7 @@ declare
   n int;
   tok text;
   tok2 text;
+  b1 uuid;
 begin
   -- ---------- setup (as admin) ----------
   insert into auth.users (id, email, aud, role)
@@ -392,6 +393,162 @@ begin
   reset role;
   ok := n = 3;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C13 anon blocked from all 3 QR functions (' || n || '/3)';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- D. Bumps
+  -- All bumps happen in the middle of the Pacific (10, -140) so real users
+  -- can't interfere. 0.00045 deg lat ~ 50 m.
+  -- State coming in: u1 is in_person with u2, u3, u4; u2-u3, u2-u4, u3-u4
+  -- have no connection.
+  -- =====================================================================
+
+  -- D1: two people 50 m apart, moments apart -> matched, connected once.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.0, -140.0, 20, 'Boise');
+  b1 := (v ->> 'bump_id')::uuid;
+  ok := v ->> 'status' = 'waiting';
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.00045, -140.0, 20, null);
+  ok := ok and v ->> 'status' = 'matched' and v ->> 'outcome' = 'created'
+        and (v -> 'other_profile' ->> 'id')::uuid = u2 and v ->> 'met_city' = 'Boise';
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.get_bump_result(b1);
+  ok := ok and v ->> 'status' = 'matched' and (v ->> 'other_user_id')::uuid = u3;
+  reset role;
+  select count(*) into n from public.connections
+  where least(requester_id, addressee_id) = least(u2, u3)
+    and greatest(requester_id, addressee_id) = greatest(u2, u3)
+    and level = 'in_person' and method = 'bump';
+  ok := ok and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D1 50 m apart -> matched on both phones, one bump connection';
+  if not ok then fails := fails + 1; end if;
+
+  -- D2: matched rows keep no coordinates.
+  select count(*) into n from public.bump_events
+  where user_id in (u2, u3) and (lat is not null or lng is not null);
+  ok := n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D2 matched bumps have no coordinates';
+  if not ok then fails := fails + 1; end if;
+
+  -- D3: bumps 3+ seconds apart -> no match; the first becomes no_match.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  b1 := (public.submit_bump(10.0, -140.0, 20, null) ->> 'bump_id')::uuid;
+  reset role;
+  update public.bump_events set created_at = created_at - interval '4 seconds' where id = b1;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.0, -140.0, 20, null);
+  ok := v ->> 'status' = 'waiting';
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.get_bump_result(b1);
+  reset role;
+  ok := ok and v ->> 'status' = 'no_match'
+        and (select lat from public.bump_events where id = b1) is null;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D3 3+ s apart -> no_match (coords erased)';
+  if not ok then fails := fails + 1; end if;
+  update public.bump_events set status = 'no_match', lat = null, lng = null
+  where user_id in (u1, u2, u3, u4) and status = 'waiting';
+
+  -- D4: 2 km apart -> no match.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  perform public.submit_bump(10.0, -140.0, 20, null);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.018, -140.0, 20, null);
+  reset role;
+  ok := v ->> 'status' = 'waiting';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D4 2 km apart -> no match';
+  if not ok then fails := fails + 1; end if;
+  update public.bump_events set status = 'no_match', lat = null, lng = null
+  where user_id in (u1, u2, u3, u4) and status = 'waiting';
+
+  -- D5: three people within the window -> ambiguous.
+  -- u1 and u2 are 400 m apart (too far for each other at 10 m accuracy);
+  -- u4 is between them with poor accuracy, so both are in range for u4.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  b1 := (public.submit_bump(10.0, -140.0, 10, null) ->> 'bump_id')::uuid;
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.0036, -140.0, 10, null);
+  ok := v ->> 'status' = 'waiting';
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.0018, -140.0, 200, null);
+  ok := ok and v ->> 'status' = 'ambiguous';
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  v := public.get_bump_result(b1);
+  ok := ok and v ->> 'status' = 'ambiguous';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D5 three people at once -> ambiguous for everyone';
+  if not ok then fails := fails + 1; end if;
+
+  -- D6: someone else can't read my bump.
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  v := public.get_bump_result(b1);
+  ok := v ->> 'status' = 'not_found';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D6 non-owner get_bump_result -> not_found';
+  if not ok then fails := fails + 1; end if;
+
+  -- D7: GPS accuracy worse than 1 km -> poor_location.
+  v := public.submit_bump(10.0, -140.0, 1500, null);
+  ok := v ->> 'status' = 'poor_location';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D7 accuracy > 1 km -> poor_location';
+  if not ok then fails := fails + 1; end if;
+
+  -- D8: impossible coordinates are rejected.
+  err := null;
+  begin
+    perform public.submit_bump(95.0, -140.0, 10, null);
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '22023';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D8 invalid coordinates rejected (got ' || coalesce(err, 'no error') || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- D9: rows older than 10 minutes are purged on the next bump.
+  reset role;
+  insert into public.bump_events (user_id, created_at, lat, lng, accuracy_m)
+  values (u1, now() - interval '11 minutes', 10.0, -140.0, 10)
+  returning id into b1;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  perform public.submit_bump(20.0, -140.0, 10, null);
+  reset role;
+  ok := not exists (select 1 from public.bump_events where id = b1);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D9 bumps older than 10 min are purged';
+  if not ok then fails := fails + 1; end if;
+  update public.bump_events set status = 'no_match', lat = null, lng = null
+  where user_id in (u1, u2, u3, u4) and status = 'waiting';
+
+  -- D10: more than 10 bumps a minute -> rate_limited.
+  delete from public.bump_events where user_id = u4;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
+  n := 0;
+  for i in 1..10 loop
+    if public.submit_bump(30.0, -140.0, 10, null) ->> 'status' = 'waiting' then n := n + 1; end if;
+  end loop;
+  v := public.submit_bump(30.0, -140.0, 10, null);
+  ok := n = 10 and v ->> 'status' = 'rate_limited';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D10 11th bump in a minute -> rate_limited';
+  if not ok then fails := fails + 1; end if;
+
+  -- D11: clients can't read bump_events directly (RLS, no policies).
+  select count(*) into n from public.bump_events;
+  ok := n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D11 direct select on bump_events sees nothing (got ' || n || ')';
+  if not ok then fails := fails + 1; end if;
+  reset role;
+
+  -- D12: anon can't call the bump functions.
+  perform set_config('role', 'anon', true);
+  n := 0;
+  begin perform public.submit_bump(10.0, -140.0, 10, null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.get_bump_result(b1); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  reset role;
+  ok := n = 2;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D12 anon blocked from both bump functions (' || n || '/2)';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.
