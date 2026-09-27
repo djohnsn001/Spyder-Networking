@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
+import { LevelChip } from '@/components/connect/level-chip';
 import { ConnectButton } from '@/components/connect-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -133,9 +134,10 @@ export default function UserProfileScreen() {
 
   const displayName = profile.full_name || profile.username || '';
   const businessStageLabel = getBusinessStageLabel(profile.business_stage);
-  const { status, connectionId } = myId
+  const { status, connectionId, level, metAt, metCity } = myId
     ? getConnectionStatus(connections, myId, profile.id)
-    : { status: 'none' as const, connectionId: null };
+    : { status: 'none' as const, connectionId: null, level: null, metAt: null, metCity: null };
+  const isMe = myId === profile.id;
 
   return (
     <ThemedView style={styles.container}>
@@ -151,6 +153,12 @@ export default function UserProfileScreen() {
             <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
               @{profile.username}
             </ThemedText>
+          ) : null}
+
+          {status === 'accepted' && level ? (
+            <View style={styles.chipRow}>
+              <LevelChip level={level} metAt={metAt} metCity={metCity} />
+            </View>
           ) : null}
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
@@ -183,6 +191,7 @@ export default function UserProfileScreen() {
           {myId ? (
             <ConnectButton
               status={status}
+              level={level}
               pending={isUpdating}
               onPress={handleConnectPress}
               onUnconnect={handleConnectPress}
@@ -218,6 +227,22 @@ export default function UserProfileScreen() {
               ) : null}
             </>
           ) : null}
+
+          {myId && !isMe && level !== 'in_person' ? (
+            <Pressable
+              onPress={() => router.push('/connect')}
+              accessibilityRole="button"
+              accessibilityLabel="Connect in person to add them to your map"
+              style={({ pressed }) => pressed && styles.buttonPressed}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+                Met in real life?{' '}
+                <ThemedText type="smallBold" style={styles.accentText}>
+                  Connect in person
+                </ThemedText>{' '}
+                to add them to your map
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </ThemedView>
       </SafeAreaView>
     </ThemedView>
@@ -248,6 +273,12 @@ const styles = StyleSheet.create({
   },
   centerText: {
     textAlign: 'center',
+  },
+  chipRow: {
+    alignItems: 'center',
+  },
+  accentText: {
+    color: AccentColor,
   },
   pillRow: {
     flexDirection: 'row',

@@ -123,6 +123,16 @@ export default function ProfileScreen() {
             ) : null}
           </ThemedView>
 
+          <Pressable
+            onPress={() => router.push('/connect')}
+            accessibilityRole="button"
+            accessibilityLabel="Connect in person"
+            style={({ pressed }) => [styles.connectButton, pressed && styles.buttonPressed]}>
+            <ThemedText type="smallBold" style={styles.buttonLabel}>
+              Connect in person
+            </ThemedText>
+          </Pressable>
+
           {requests.length > 0 ? (
             <ThemedView type="backgroundElement" style={styles.requestsCard}>
               <ThemedText type="smallBold">
@@ -244,6 +254,14 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     color: '#fdfbf7',
+  },
+  connectButton: {
+    alignSelf: 'stretch',
+    maxWidth: MaxContentWidth,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
+    backgroundColor: AccentColor,
+    alignItems: 'center',
   },
   requestsCard: {
     alignSelf: 'stretch',

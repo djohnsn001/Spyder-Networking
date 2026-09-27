@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
+import type { ConnectionLevel, ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
 
 // All connection rows the current user is part of, either side.
 export async function fetchMyConnections(userId: string): Promise<ConnectionRow[]> {
@@ -20,17 +20,29 @@ export function getConnectionStatus(
   connections: ConnectionRow[],
   myId: string,
   otherId: string,
-): { status: ConnectionStatus; connectionId: string | null } {
+): {
+  status: ConnectionStatus;
+  connectionId: string | null;
+  level: ConnectionLevel | null;
+  metAt: string | null;
+  metCity: string | null;
+} {
   const match = connections.find(
     (c) =>
       (c.requester_id === myId && c.addressee_id === otherId) ||
       (c.requester_id === otherId && c.addressee_id === myId),
   );
-  if (!match) return { status: 'none', connectionId: null };
-  if (match.status === 'accepted') return { status: 'accepted', connectionId: match.id };
+  if (!match) return { status: 'none', connectionId: null, level: null, metAt: null, metCity: null };
+  const details = {
+    connectionId: match.id,
+    level: match.level,
+    metAt: match.met_at,
+    metCity: match.met_city,
+  };
+  if (match.status === 'accepted') return { status: 'accepted', ...details };
   return {
     status: match.requester_id === myId ? 'pending_sent' : 'pending_received',
-    connectionId: match.id,
+    ...details,
   };
 }
 
@@ -124,6 +136,58 @@ export async function fetchConnectionProfiles(userId: string): Promise<Profile[]
     return [];
   }
   return profiles ?? [];
+}
+
+export type ConnectionWithProfile = {
+  connectionId: string;
+  level: ConnectionLevel;
+  metAt: string | null;
+  metCity: string | null;
+  profile: Profile;
+};
+
+// Everyone the current user is accepted-connected with, plus the level and
+// (for in-person connections) when/where they met. Newest meeting first.
+export async function fetchConnectionsByLevel(userId: string): Promise<ConnectionWithProfile[]> {
+  const { data: rows, error } = await supabase
+    .from('connections')
+    .select('id, requester_id, addressee_id, level, met_at, met_city')
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+    .order('met_at', { ascending: false, nullsFirst: false });
+  if (error) {
+    console.error('Failed to load connections', error);
+    return [];
+  }
+  if (!rows || rows.length === 0) return [];
+
+  const otherIdFor = (row: { requester_id: string; addressee_id: string }) =>
+    row.requester_id === userId ? row.addressee_id : row.requester_id;
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', rows.map(otherIdFor));
+  if (profilesError) {
+    console.error('Failed to load connection profiles', profilesError);
+    return [];
+  }
+
+  const profilesById = new Map(profiles?.map((profile) => [profile.id, profile]));
+  return rows
+    .map((row) => {
+      const profile = profilesById.get(otherIdFor(row));
+      return profile
+        ? {
+            connectionId: row.id,
+            level: row.level,
+            metAt: row.met_at,
+            metCity: row.met_city,
+            profile,
+          }
+        : null;
+    })
+    .filter((item): item is ConnectionWithProfile => item !== null);
 }
 
 export async function fetchConnectionCount(userId: string): Promise<number> {

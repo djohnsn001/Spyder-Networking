@@ -1,30 +1,42 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
+import { LevelChip } from '@/components/connect/level-chip';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
-import { fetchConnectionProfiles } from '@/lib/connections';
+import { CONNECTION_LEVEL_LABEL_PLURAL } from '@/lib/connect/labels';
+import { fetchConnectionsByLevel, type ConnectionWithProfile } from '@/lib/connections';
 import { getBusinessStageLabel } from '@/lib/profile-options';
-import type { Profile } from '@/lib/types';
 
 export default function ConnectionsScreen() {
   const { session } = useAuth();
   const myId = session?.user.id;
 
-  const [connections, setConnections] = useState<Profile[]>([]);
+  const [connections, setConnections] = useState<ConnectionWithProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!myId) return;
     setIsLoading(true);
-    setConnections(await fetchConnectionProfiles(myId));
+    setConnections(await fetchConnectionsByLevel(myId));
     setIsLoading(false);
   }, [myId]);
+
+  const sections = [
+    {
+      title: CONNECTION_LEVEL_LABEL_PLURAL.in_person,
+      data: connections.filter((c) => c.level === 'in_person'),
+    },
+    {
+      title: CONNECTION_LEVEL_LABEL_PLURAL.acquaintance,
+      data: connections.filter((c) => c.level === 'acquaintance'),
+    },
+  ].filter((section) => section.data.length > 0);
 
   useFocusEffect(
     useCallback(() => {
@@ -36,9 +48,15 @@ export default function ConnectionsScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          <FlatList
-            data={connections}
-            keyExtractor={(item) => item.id}
+          <SectionList
+            sections={sections}
+            keyExtractor={(item) => item.connectionId}
+            stickySectionHeadersEnabled={false}
+            renderSectionHeader={({ section }) => (
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeader}>
+                {section.title} ({section.data.length})
+              </ThemedText>
+            )}
             contentContainerStyle={styles.listContent}
             refreshing={isLoading}
             onRefresh={load}
@@ -49,7 +67,8 @@ export default function ConnectionsScreen() {
                 </ThemedText>
               ) : null
             }
-            renderItem={({ item }) => {
+            renderItem={({ item: connection }) => {
+              const item = connection.profile;
               const displayName = item.full_name || item.username || '';
               const businessStageLabel = getBusinessStageLabel(item.business_stage);
 
@@ -73,6 +92,13 @@ export default function ConnectionsScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {[item.city, businessStageLabel].filter(Boolean).join(' · ')}
                         </ThemedText>
+                      ) : null}
+                      {connection.level === 'in_person' ? (
+                        <LevelChip
+                          level="in_person"
+                          metAt={connection.metAt}
+                          metCity={connection.metCity}
+                        />
                       ) : null}
                     </View>
                   </ThemedView>
@@ -104,6 +130,9 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingTop: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.four,
+  },
+  sectionHeader: {
+    marginTop: Spacing.two,
   },
   emptyText: {
     textAlign: 'center',

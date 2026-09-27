@@ -44,7 +44,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Bolas needs your approximate location to show you on the Web Map and help you find nearby builders."
+          "locationWhenInUsePermission": "Bolas uses your approximate location to show you on the Web Map, and while you're tapping phones to match you with the person you're with and note the city you met in."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Bolas uses your camera to scan a friend's code when you meet in person.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ]
     ],

@@ -5,10 +5,12 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, Spacing } from '@/constants/theme';
-import type { ConnectionStatus } from '@/lib/types';
+import { CONNECTION_LEVEL_LABEL } from '@/lib/connect/labels';
+import type { ConnectionLevel, ConnectionStatus } from '@/lib/types';
 
 export function ConnectButton({
   status,
+  level,
   onPress,
   onUnconnect,
   onAccept,
@@ -16,6 +18,8 @@ export function ConnectButton({
   pending,
 }: {
   status: ConnectionStatus;
+  // Shown instead of "Connected" once accepted.
+  level?: ConnectionLevel | null;
   onPress: () => void;
   onUnconnect?: () => void;
   onAccept?: () => void;
@@ -31,10 +35,10 @@ export function ConnectButton({
           onPress={() => onUnconnect && setConfirmingUnconnect(true)}
           disabled={pending || !onUnconnect}
           accessibilityRole="button"
-          accessibilityLabel="Connected. Tap to unconnect">
+          accessibilityLabel={`${level ? CONNECTION_LEVEL_LABEL[level] : 'Connected'}. Tap to unconnect`}>
           <ThemedView type="backgroundSelected" style={styles.button}>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              Connected
+              {level ? CONNECTION_LEVEL_LABEL[level] : 'Connected'}
             </ThemedText>
           </ThemedView>
         </Pressable>
@@ -100,13 +104,14 @@ export function ConnectButton({
   }
 
   const isPendingSent = status === 'pending_sent';
+  const addLabel = `Add as ${CONNECTION_LEVEL_LABEL.acquaintance}`;
 
   return (
     <Pressable
       onPress={onPress}
       disabled={pending}
       accessibilityRole="button"
-      accessibilityLabel={isPendingSent ? 'Cancel request' : 'Connect'}
+      accessibilityLabel={isPendingSent ? 'Cancel request' : addLabel}
       style={({ pressed }) => [
         styles.button,
         {
@@ -120,7 +125,7 @@ export function ConnectButton({
       <ThemedText
         type="smallBold"
         style={isPendingSent ? { color: AccentColor } : styles.buttonLabelWhite}>
-        {isPendingSent ? 'Requested' : 'Connect'}
+        {isPendingSent ? 'Requested' : addLabel}
       </ThemedText>
     </Pressable>
   );

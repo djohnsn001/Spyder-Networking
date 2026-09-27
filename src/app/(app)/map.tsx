@@ -490,8 +490,16 @@ export default function MapScreen() {
       {webState === 'loaded' && otherConnections.length === 0 ? (
         <ThemedView type="backgroundElement" style={styles.banner}>
           <ThemedText type="small" themeColor="textSecondary">
-            No connections yet — add some from Discover to see them here.
+            Your map grows when you meet people.
           </ThemedText>
+          <Pressable
+            onPress={() => router.push('/connect')}
+            accessibilityRole="button"
+            accessibilityLabel="Connect in person">
+            <ThemedText type="smallBold" style={{ color: AccentColor }}>
+              Connect in person
+            </ThemedText>
+          </Pressable>
         </ThemedView>
       ) : null}
 

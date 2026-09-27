@@ -1,8 +1,10 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { takePendingConnectToken } from '@/lib/connect/pending-link';
 import { ThemePreferenceProvider, useThemePreference } from '@/lib/theme-preference';
 import { UnreadMessagesProvider } from '@/lib/unread-messages';
 
@@ -11,6 +13,16 @@ SplashScreen.preventAutoHideAsync();
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
   const hasUsername = !!profile?.username;
+  const pathname = usePathname();
+
+  // A bolas://connect/<code> link that arrived while signed out (or before
+  // profile setup finished) gets redeemed as soon as the app is usable.
+  useEffect(() => {
+    if (isLoading || !session || !hasUsername) return;
+    if (pathname.startsWith('/connect/')) return;
+    const token = takePendingConnectToken();
+    if (token) router.push(`/connect/${token}`);
+  }, [isLoading, session, hasUsername, pathname]);
 
   // The splash overlay covers the screen until it finishes hiding, so
   // returning null here briefly doesn't cause a flash of blank content.
@@ -39,6 +51,8 @@ function RootNavigator() {
             }}
           />
           <Stack.Screen name="event/[id]/edit" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="connect/index" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="connect/[token]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />

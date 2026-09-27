@@ -140,9 +140,9 @@ export default function DiscoverScreen() {
             renderItem={({ item }) => {
               const displayName = item.full_name || item.username || '';
               const businessStageLabel = getBusinessStageLabel(item.business_stage);
-              const { status, connectionId } = myId
+              const { status, connectionId, level } = myId
                 ? getConnectionStatus(connections, myId, item.id)
-                : { status: 'none' as ConnectionStatus, connectionId: null };
+                : { status: 'none' as ConnectionStatus, connectionId: null, level: null };
 
               return (
                 <Pressable
@@ -182,6 +182,7 @@ export default function DiscoverScreen() {
 
                       <ConnectButton
                         status={status}
+                        level={level}
                         pending={pendingId === item.id}
                         onPress={() => handleConnectPress(item)}
                         onUnconnect={() => handleConnectPress(item)}
