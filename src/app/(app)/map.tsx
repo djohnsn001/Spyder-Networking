@@ -144,6 +144,8 @@ export default function MapScreen() {
   const [longitudeDelta, setLongitudeDelta] = useState(BOISE_REGION.longitudeDelta);
   const lastRegionUpdateRef = useRef(0);
   const [events, setEvents] = useState<EventSummary[]>([]);
+  // The last event fetch failed; shows a small banner with Retry.
+  const [eventsFailed, setEventsFailed] = useState(false);
   const [draftPin, setDraftPin] = useState<LatLng | null>(null);
   // The latest settled region — used for the "+" button (map center) and
   // for refetching events when the tab regains focus.
@@ -173,10 +175,15 @@ export default function MapScreen() {
     const requestId = ++eventRequestIdRef.current;
     try {
       const data = await fetchEventsInRegion(region);
-      if (requestId === eventRequestIdRef.current) setEvents(data);
+      if (requestId === eventRequestIdRef.current) {
+        setEvents(data);
+        setEventsFailed(false);
+      }
     } catch (error) {
-      // Keep whatever pins are already showing; the next pan retries.
-      console.error('Failed to load map events', error);
+      // Keep whatever pins are already showing; the next pan (or Retry)
+      // tries again. Raw errors are for developers only.
+      if (__DEV__) console.warn('Failed to load map events', error);
+      if (requestId === eventRequestIdRef.current) setEventsFailed(true);
     }
   }, []);
 
@@ -469,6 +476,23 @@ export default function MapScreen() {
         <ThemedText style={styles.fabLabel}>+</ThemedText>
       </Pressable>
 
+      {/* Top-left, clear of the "+" button and the bottom banners. */}
+      {eventsFailed ? (
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.eventsBanner, { top: insets.top + Spacing.two }]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.eventsBannerText}>
+            Couldn't load events. Check your connection.
+          </ThemedText>
+          <Pressable
+            onPress={() => void loadEvents(regionRef.current)}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading events">
+            <ThemedText type="smallBold">Retry</ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : null}
+
       {webState === 'loading' ? (
         <ThemedView type="backgroundElement" style={styles.banner}>
           <ActivityIndicator />
@@ -539,6 +563,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  eventsBanner: {
+    position: 'absolute',
+    left: Spacing.four,
+    right: Spacing.four + FAB_SIZE + Spacing.two,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  eventsBannerText: {
+    flexShrink: 1,
   },
   banner: {
     position: 'absolute',
