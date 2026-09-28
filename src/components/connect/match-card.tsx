@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -14,7 +15,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import {
@@ -69,7 +70,13 @@ export function MatchCard({
     );
     strand.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
     if (canUndo) {
-      ring.value = withTiming(0, { duration: UNDO_SECONDS * 1000, easing: Easing.linear });
+      // The Undo countdown is a timer, so it keeps running with Reduce Motion
+      // on. The strand above is decoration and follows the system setting.
+      ring.value = withTiming(0, {
+        duration: UNDO_SECONDS * 1000,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.Never,
+      });
     }
   }, [match, canUndo, strand, ring]);
 
@@ -231,7 +238,7 @@ export function MatchCard({
           ) : null}
 
           {error ? (
-            <ThemedText type="small" style={[styles.center, { color: ErrorColor }]}>
+            <ThemedText type="small" themeColor="error" style={styles.center}>
               {error}
             </ThemedText>
           ) : null}

@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
@@ -324,7 +324,7 @@ export function ProfileForm({
               </View>
 
               {errorMessage ? (
-                <ThemedText type="small" style={styles.errorText}>
+                <ThemedText themeColor="error" type="small" style={styles.errorText}>
                   {errorMessage}
                 </ThemedText>
               ) : null}
@@ -419,7 +419,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   button: {

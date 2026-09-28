@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
@@ -86,7 +86,7 @@ export default function SettingsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Delete account"
               style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-              <ThemedText type="default" style={styles.logoutLabel}>
+              <ThemedText themeColor="danger" type="default" style={styles.logoutLabel}>
                 Delete account
               </ThemedText>
               <ThemedText type="default" themeColor="textSecondary">
@@ -196,7 +196,7 @@ export default function SettingsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Log out"
               style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-              <ThemedText type="default" themeColor="text" style={styles.logoutLabel}>
+              <ThemedText type="default" themeColor="danger" style={styles.logoutLabel}>
                 Log out
               </ThemedText>
             </Pressable>
@@ -271,7 +271,6 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   logoutLabel: {
-    color: DangerColor,
   },
   themeOptionsRow: {
     gap: Spacing.two,

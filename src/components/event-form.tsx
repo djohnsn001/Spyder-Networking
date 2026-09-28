@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DateTimeField } from '@/components/date-time-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   EVENT_DESCRIPTION_LIMIT,
@@ -129,7 +129,7 @@ export function EventForm({
 
   function renderError(message: string | undefined) {
     return message ? (
-      <ThemedText type="small" style={styles.errorText}>
+      <ThemedText themeColor="error" type="small" style={styles.errorText}>
         {message}
       </ThemedText>
     ) : null;
@@ -315,7 +315,7 @@ export function EventForm({
           </View>
 
           {submitError ? (
-            <ThemedText type="small" style={[styles.errorText, styles.centerText]}>
+            <ThemedText themeColor="error" type="small" style={[styles.errorText, styles.centerText]}>
               {submitError}
             </ThemedText>
           ) : null}
@@ -405,7 +405,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   errorText: {
-    color: ErrorColor,
   },
   centerText: {
     textAlign: 'center',

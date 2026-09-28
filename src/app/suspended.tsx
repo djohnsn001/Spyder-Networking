@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { contactSupport, LEGAL, openLegalUrl } from '@/lib/legal/config';
 import { supabase } from '@/lib/supabase';
 
@@ -40,7 +40,7 @@ export default function SuspendedScreen() {
           <View style={styles.logout}>
             <Pressable
               onPress={() => supabase.auth.signOut()}
-              hitSlop={Spacing.two}
+              hitSlop={Spacing.three}
               accessibilityRole="button"
               accessibilityLabel="Log out">
               <ThemedText type="small" themeColor="textSecondary" style={styles.underline}>
@@ -61,7 +61,7 @@ function Row({ label, onPress, danger }: { label: string; onPress: () => void; d
       accessibilityRole="button"
       accessibilityLabel={label}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-      <ThemedText type="default" style={danger ? { color: DangerColor } : undefined}>
+      <ThemedText type="default" themeColor={danger ? 'danger' : 'text'}>
         {label}
       </ThemedText>
       <ThemedText type="default" themeColor="textSecondary">

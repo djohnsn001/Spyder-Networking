@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ConsentCheckbox } from '@/components/legal/consent-checkbox';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { LEGAL } from '@/lib/legal/config';
 import { callRpc, friendlyRpcError } from '@/lib/rpc';
@@ -74,7 +74,7 @@ export default function AcceptTermsScreen() {
           </ThemedView>
 
           {errorMessage ? (
-            <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
+            <ThemedText themeColor="error" type="small" style={styles.errorText} accessibilityLiveRegion="polite">
               {errorMessage}
             </ThemedText>
           ) : null}
@@ -102,7 +102,7 @@ export default function AcceptTermsScreen() {
           <View style={styles.secondaryActions}>
             <Pressable
               onPress={() => router.push('/delete-account')}
-              hitSlop={Spacing.two}
+              hitSlop={Spacing.three}
               accessibilityRole="button"
               accessibilityLabel="Delete my account instead">
               <ThemedText type="small" themeColor="textSecondary" style={styles.underline}>
@@ -111,7 +111,7 @@ export default function AcceptTermsScreen() {
             </Pressable>
             <Pressable
               onPress={() => supabase.auth.signOut()}
-              hitSlop={Spacing.two}
+              hitSlop={Spacing.three}
               accessibilityRole="button"
               accessibilityLabel="Log out">
               <ThemedText type="small" themeColor="textSecondary" style={styles.underline}>
@@ -143,7 +143,6 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
   },
   errorText: {
-    color: ErrorColor,
   },
   button: {
     minHeight: 48,

@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   REPORT_DETAILS_LIMIT,
@@ -142,7 +142,7 @@ export default function ReportEventScreen() {
           </View>
 
           {error ? (
-            <ThemedText type="small" style={styles.errorText}>
+            <ThemedText themeColor="error" type="small" style={styles.errorText}>
               {error}
             </ThemedText>
           ) : null}
@@ -224,7 +224,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   button: {

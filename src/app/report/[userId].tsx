@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, DangerColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, DangerColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { LEGAL } from '@/lib/legal/config';
 import { friendlyRpcError } from '@/lib/rpc';
@@ -129,7 +129,7 @@ export default function ReportUserScreen() {
             </ThemedText>
             <Pressable
               onPress={() => router.back()}
-              hitSlop={Spacing.two}
+              hitSlop={Spacing.three}
               accessibilityRole="button"
               accessibilityLabel="Cancel">
               <ThemedText type="smallBold" themeColor="textSecondary">
@@ -184,7 +184,7 @@ export default function ReportUserScreen() {
           </View>
 
           {error ? (
-            <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
+            <ThemedText themeColor="error" type="small" style={styles.errorText} accessibilityLiveRegion="polite">
               {error}
             </ThemedText>
           ) : null}
@@ -270,7 +270,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   button: {

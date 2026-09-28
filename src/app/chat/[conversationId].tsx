@@ -17,7 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { fetchMyConnections, getConnectionStatus } from '@/lib/connections';
@@ -342,7 +342,7 @@ export default function ChatScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Retry sending this message"
                       style={isMine ? styles.timestampMine : styles.timestampTheirs}>
-                      <ThemedText type="small" style={styles.failedText}>
+                      <ThemedText themeColor="error" type="small" style={styles.failedText}>
                         Failed to send · Tap to retry
                       </ThemedText>
                     </Pressable>
@@ -457,7 +457,6 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.one,
   },
   failedText: {
-    color: ErrorColor,
   },
   inputRow: {
     flexDirection: 'row',

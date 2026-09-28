@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DangerColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { clearAfterAccountDeletion, deleteMyAccount } from '@/lib/account';
 import { useAuth } from '@/lib/auth';
@@ -107,7 +107,7 @@ export default function DeleteAccountScreen() {
             </ThemedText>
           </ThemedView>
 
-          <ThemedText type="smallBold" style={{ color: DangerColor }}>
+          <ThemedText type="smallBold" themeColor="danger">
             This can&apos;t be undone.
           </ThemedText>
 
@@ -132,7 +132,7 @@ export default function DeleteAccountScreen() {
           </View>
 
           {errorMessage ? (
-            <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
+            <ThemedText themeColor="error" type="small" style={styles.errorText} accessibilityLiveRegion="polite">
               {errorMessage}
             </ThemedText>
           ) : null}
@@ -195,7 +195,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   errorText: {
-    color: ErrorColor,
   },
   button: {
     minHeight: 48,

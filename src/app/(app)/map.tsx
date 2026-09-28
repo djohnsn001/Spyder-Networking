@@ -602,7 +602,7 @@ export default function MapScreen() {
           <Pressable
             onPress={() => void turnOnSharing()}
             disabled={isEnablingSharing}
-            hitSlop={Spacing.two}
+            hitSlop={Spacing.three}
             accessibilityRole="button"
             accessibilityLabel="Turn on showing me on the map"
             accessibilityState={{ disabled: isEnablingSharing }}>
@@ -616,7 +616,7 @@ export default function MapScreen() {
           </Pressable>
           <Pressable
             onPress={dismissHiddenBanner}
-            hitSlop={Spacing.two}
+            hitSlop={Spacing.three}
             accessibilityRole="button"
             accessibilityLabel="Not now"
             accessibilityHint="You can turn this on later in Settings">

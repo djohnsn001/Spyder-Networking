@@ -9,7 +9,7 @@ import { EventAttendees } from '@/components/event-attendees';
 import { EventLocation } from '@/components/event-location';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, DangerColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, DangerColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
   deleteEvent,
@@ -187,7 +187,7 @@ export default function EventDetailScreen() {
       {/* Only the host (and admins) ever see an event that isn't active. */}
       {!isActive ? (
         <View style={styles.banner}>
-          <ThemedText type="smallBold" style={styles.bannerText}>
+          <ThemedText themeColor="error" type="smallBold" style={styles.bannerText}>
             {event.status === 'hidden'
               ? "This event is under review and isn't visible to others."
               : 'This event was removed.'}
@@ -256,7 +256,7 @@ export default function EventDetailScreen() {
       />
 
       {actionError ? (
-        <ThemedText type="small" style={styles.errorText}>
+        <ThemedText themeColor="error" type="small" style={styles.errorText}>
           {actionError}
         </ThemedText>
       ) : null}
@@ -357,7 +357,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(229, 107, 111, 0.15)',
   },
   bannerText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   titleBlock: {
@@ -433,7 +432,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
 });

@@ -26,7 +26,8 @@ export function ConsentCheckbox({
       <Pressable
         onPress={() => onChange(!checked)}
         disabled={disabled}
-        hitSlop={Spacing.two}
+        // 22 pt box + 12 pt on each side = a 46 pt tap target (44 minimum).
+        hitSlop={12}
         accessibilityRole="checkbox"
         accessibilityState={{ checked, disabled }}
         accessibilityLabel={`I'm ${LEGAL.MIN_AGE} or older and I agree to the Terms and Privacy Policy`}

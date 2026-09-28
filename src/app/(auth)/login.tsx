@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
 } from 'react-native';
@@ -12,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { takeAuthNotice } from '@/lib/account';
 import { supabase } from '@/lib/supabase';
@@ -57,7 +58,11 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.container}>
+          {/* Scrolls at large text sizes (Dynamic Type); centered otherwise. */}
+          <ScrollView
+            contentContainerStyle={styles.safeArea}
+            keyboardShouldPersistTaps="handled">
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="subtitle" style={styles.title}>
               Bolas
@@ -96,7 +101,7 @@ export default function LoginScreen() {
             />
 
             {errorMessage ? (
-              <ThemedText type="small" style={styles.errorText}>
+              <ThemedText themeColor="error" type="small" style={styles.errorText}>
                 {errorMessage}
               </ThemedText>
             ) : null}
@@ -133,6 +138,7 @@ export default function LoginScreen() {
               </Pressable>
             </Link>
           </ThemedView>
+          </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -144,7 +150,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   safeArea: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: Spacing.four,
@@ -171,7 +177,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   infoText: {

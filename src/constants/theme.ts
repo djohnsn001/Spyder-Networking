@@ -13,7 +13,13 @@ export const Colors = {
     background: '#faf5ec',
     backgroundElement: '#f3ebdd',
     backgroundSelected: '#e8dcc8',
-    textSecondary: '#6e6058',
+    textSecondary: '#685a52',
+
+    // Red text (Log out, Delete account) and error messages. Separate per
+    // mode because no single red passes WCAG AA on both the cream and the
+    // near-black backgrounds (npm run contrast).
+    danger: '#b8383d',
+    error: '#b3372f',
 
     // Brand accent, tuned per mode. `accent` is a fill (buttons, markers),
     // `onAccent` is text/icons drawn on that fill, and `accentText` is
@@ -57,6 +63,9 @@ export const Colors = {
     backgroundElement: '#2a2320',
     backgroundSelected: '#382f2b',
     textSecondary: '#b8a99f',
+
+    danger: '#e56b6f',
+    error: '#f28b82',
 
     accent: '#83655d',
     onAccent: '#fdfbf7',
@@ -144,5 +153,6 @@ export const SecondaryAccentSoft = {
   light: Colors.light.secondaryAccentSoft,
   dark: Colors.dark.secondaryAccentSoft,
 } as const;
-export const DangerColor = '#e56b6f';
-export const ErrorColor = '#d1453b';
+// Fill for destructive buttons (white label on top: 5.5:1). For red TEXT use
+// the theme's `danger` color instead.
+export const DangerColor = '#b8383d';

@@ -13,7 +13,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, DangerColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   adminFindUser,
@@ -162,7 +162,7 @@ function UserReportsTab() {
           }}
         />
       }>
-      {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+      {error ? <ThemedText themeColor="error" style={styles.errorText}>{error}</ThemedText> : null}
       {groups === null && !error ? <ActivityIndicator /> : null}
       {groups?.length === 0 ? (
         <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
@@ -181,7 +181,7 @@ function UserReportsTab() {
         return (
           <ThemedView key={key} type="backgroundElement" style={styles.card}>
             {group.has_underage ? (
-              <ThemedText type="smallBold" style={{ color: DangerColor }}>
+              <ThemedText type="smallBold" themeColor="danger">
                 ⚠︎ Reported as possibly under 18 — review first
               </ThemedText>
             ) : null}
@@ -313,7 +313,7 @@ function FlaggedTab() {
           }}
         />
       }>
-      {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+      {error ? <ThemedText themeColor="error" style={styles.errorText}>{error}</ThemedText> : null}
       {events === null && !error ? <ActivityIndicator /> : null}
       {events?.length === 0 ? (
         <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
@@ -467,7 +467,7 @@ function HostsTab() {
         />
         <AdminButton label={isSearching ? '…' : 'Search'} disabled={isSearching} onPress={() => search()} />
       </View>
-      {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+      {error ? <ThemedText themeColor="error" style={styles.errorText}>{error}</ThemedText> : null}
       {results?.length === 0 ? (
         <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
           No one with that username.
@@ -613,7 +613,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   pressed: {

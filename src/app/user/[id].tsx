@@ -8,7 +8,7 @@ import { LevelChip } from '@/components/connect/level-chip';
 import { ConnectButton } from '@/components/connect-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, BottomTabInset, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
   acceptConnectionRequest,
@@ -242,7 +242,7 @@ export default function UserProfileScreen() {
                 )}
               </Pressable>
               {chatError ? (
-                <ThemedText type="small" style={styles.errorText}>
+                <ThemedText themeColor="error" type="small" style={styles.errorText}>
                   {chatError}
                 </ThemedText>
               ) : null}
@@ -328,7 +328,6 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
     marginTop: Spacing.one,
   },

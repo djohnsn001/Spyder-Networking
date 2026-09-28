@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -11,7 +12,7 @@ import Animated, {
 
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import type { InPersonMatch } from '@/lib/connect/api';
 import { connectUrlFor } from '@/lib/connect/parse-connect-url';
@@ -45,6 +46,9 @@ export function MyCodePanel({
     progress.value = withTiming(0, {
       duration: Math.max(0, rotatesAt - Date.now()),
       easing: Easing.linear,
+      // A timer, not decoration: with Reduce Motion on it must still show
+      // how long the code has left (Reanimated would otherwise skip it).
+      reduceMotion: ReduceMotion.Never,
     });
   }, [rotatesAt, progress]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
@@ -83,7 +87,7 @@ export function MyCodePanel({
       </ThemedText>
 
       {error ? (
-        <ThemedText type="small" style={[styles.center, { color: ErrorColor }]}>
+        <ThemedText type="small" themeColor="error" style={styles.center}>
           {error}
         </ThemedText>
       ) : null}
