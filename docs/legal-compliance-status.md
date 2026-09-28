@@ -1,8 +1,9 @@
 # Legal & app store compliance: status
 
-Companion to `docs/plans/legal-compliance.md`. Branch: `feature/legal-compliance`, built on
-`feature/event-safety` (whose migrations were already live; Zane's call). **Not pushed, not
-merged.** As of 2026-09-28.
+Companion to `docs/plans/legal-compliance.md`. Built on branch `feature/legal-compliance` (on top
+of `feature/event-safety`, whose migrations were already live; Zane's call). **Both merged into
+`mobile-app` on 2026-09-28** (merge `3710793`, together with the partner's `@expo/ngrok` commit),
+before the Phase 5b two-account test (Zane's call).
 
 ## What's built
 
@@ -162,5 +163,5 @@ From the plan's QA table:
   **new native build**. Expo Go shows its own permission wording.
 - The Supabase project is on the **Free** plan (~1 day of logs). Upgrading changes the log
   retention stated in the inventory and privacy policy.
-- Nothing is pushed or merged. Merging `feature/event-safety` and then this branch into
-  `mobile-app`, and any pull request, is Zane's call.
+- Merged into `mobile-app` before the 5b two-account test. If that test finds a bug, fix it on a
+  new branch off `mobile-app`.
