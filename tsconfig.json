@@ -16,5 +16,14 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  // Edge Functions are Deno code (npm: imports, Deno globals), deployed with
+  // the Supabase CLI — not part of the app build. Listing "exclude" replaces
+  // the base config's list, so its entries are repeated here.
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    "supabase/functions"
   ]
 }

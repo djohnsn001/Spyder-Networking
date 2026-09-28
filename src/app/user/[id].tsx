@@ -1,4 +1,4 @@
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { LevelChip } from '@/components/connect/level-chip';
 import { ConnectButton } from '@/components/connect-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, BottomTabInset, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
   acceptConnectionRequest,
@@ -21,6 +21,7 @@ import {
 } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
 import { getBusinessStageLabel } from '@/lib/profile-options';
+import { openSafetyMenu } from '@/lib/safety';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionRow, Profile } from '@/lib/types';
 
@@ -123,8 +124,10 @@ export default function UserProfileScreen() {
           {isLoading ? (
             <ActivityIndicator />
           ) : (
+            // Also what someone sees for a profile that blocked them, or a
+            // suspended account: never anything more specific.
             <ThemedText type="default" themeColor="textSecondary">
-              This profile couldn&apos;t be found.
+              This profile isn&apos;t available.
             </ThemedText>
           )}
         </SafeAreaView>
@@ -141,6 +144,24 @@ export default function UserProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {!isMe ? (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <Pressable
+                onPress={() => openSafetyMenu(displayName || 'this person', profile.id, 'profile')}
+                hitSlop={Spacing.three}
+                accessibilityRole="button"
+                accessibilityLabel={`More options for ${displayName || 'this person'}`}
+                accessibilityHint="Report or block">
+                <ThemedText type="subtitle" themeColor="textSecondary">
+                  ⋯
+                </ThemedText>
+              </Pressable>
+            ),
+          }}
+        />
+      ) : null}
       <SafeAreaView style={styles.safeArea}>
         <ThemedView type="backgroundElement" style={styles.card}>
           <Avatar uri={profile.avatar_url} name={displayName} size={96} />
@@ -221,7 +242,7 @@ export default function UserProfileScreen() {
                 )}
               </Pressable>
               {chatError ? (
-                <ThemedText type="small" style={styles.errorText}>
+                <ThemedText themeColor="error" type="small" style={styles.errorText}>
                   {chatError}
                 </ThemedText>
               ) : null}
@@ -307,7 +328,6 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
     marginTop: Spacing.one,
   },

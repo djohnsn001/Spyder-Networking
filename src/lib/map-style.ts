@@ -2,9 +2,9 @@
 // restyled, so there we use its built-in "muted" map instead).
 //
 // The idea: paint the whole map in one warm tone with very little contrast,
-// and hide businesses/transit, so the white web lines are the brightest
-// thing on screen. Roads are deliberately NOT white — white roads would
-// compete with the connection lines.
+// and hide businesses/transit, so the web lines, people, and events are the
+// strongest things on screen. Roads are deliberately low-contrast so they
+// don't compete with the connection lines.
 //
 // Each rule says "for this kind of map feature, set these colors". Made
 // with the format from https://developers.google.com/maps/documentation/javascript/style-reference
@@ -48,7 +48,8 @@ export const LIGHT_MAP_STYLE = monochromeStyle({
   land: '#ebe3d5',
   road: '#ddd2c1',
   water: '#d3c8b7',
-  label: '#9a8a80',
+  // Muted, but still readable at a glance (~4:1 on land, ~3.6:1 on roads).
+  label: '#76685f',
   labelHalo: '#ebe3d5',
 });
 
@@ -57,6 +58,6 @@ export const DARK_MAP_STYLE = monochromeStyle({
   land: '#1f1a17',
   road: '#2e2723',
   water: '#141110',
-  label: '#6f625a',
+  label: '#8a7b72',
   labelHalo: '#1f1a17',
 });

@@ -48,6 +48,8 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
+    "licenses": "node ./scripts/generate-licenses.js",
+    "contrast": "node ./scripts/check-contrast.js",
     "seed:map": "node ./scripts/seed-map-data.js",
     "seed:map:connections": "node ./scripts/add-seed-connections.js",
     "seed:map:locations": "node ./scripts/update-seed-locations.js",

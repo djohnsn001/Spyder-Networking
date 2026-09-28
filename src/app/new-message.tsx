@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ErrorColor, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { fetchConnectionProfiles } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
@@ -59,7 +59,7 @@ export default function NewMessageScreen() {
         </View>
 
         {errorMessage ? (
-          <ThemedText type="small" style={styles.errorText}>
+          <ThemedText themeColor="error" type="small" style={styles.errorText}>
             {errorMessage}
           </ThemedText>
         ) : null}
@@ -131,7 +131,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
     marginBottom: Spacing.two,
   },

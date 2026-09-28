@@ -15,9 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { uploadAvatar } from '@/lib/avatar';
+import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
 import { BioLimit, BusinessStages, InterestOptions, UsernamePattern } from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
@@ -81,8 +81,10 @@ export function ProfileForm({
         .update({ avatar_url: publicUrl })
         .eq('id', session.user.id);
       if (error) throw error;
+      const previousUrl = avatarUrl;
       setAvatarUrl(publicUrl);
       await refreshProfile();
+      void removeOldAvatar(session.user.id, previousUrl);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to upload photo.');
     } finally {
@@ -140,6 +142,17 @@ export function ProfileForm({
       if (updateError) {
         if (updateError.code === '23505') {
           setErrorMessage('That username is already taken. Try another one.');
+          return;
+        }
+        // The server's content filter (details names the field).
+        if (updateError.code === 'P0001' && updateError.message === 'blocked_content') {
+          const field =
+            updateError.details === 'username'
+              ? 'username'
+              : updateError.details === 'full_name'
+                ? 'name'
+                : 'bio';
+          setErrorMessage(`Your ${field} includes something we don't allow. Try different wording.`);
           return;
         }
         throw updateError;
@@ -266,14 +279,13 @@ export function ProfileForm({
                         style={({ pressed }) => [
                           styles.pill,
                           {
-                            backgroundColor: selected ? AccentColor : theme.backgroundSelected,
+                            backgroundColor: selected ? theme.secondaryAccent : theme.backgroundSelected,
                           },
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText
                           type="small"
-                          style={selected ? styles.pillLabelSelected : undefined}
-                          themeColor={selected ? undefined : 'text'}>
+                          themeColor={selected ? 'onSecondaryAccent' : 'text'}>
                           {stage.label}
                         </ThemedText>
                       </Pressable>
@@ -296,14 +308,13 @@ export function ProfileForm({
                         style={({ pressed }) => [
                           styles.pill,
                           {
-                            backgroundColor: selected ? AccentColor : theme.backgroundSelected,
+                            backgroundColor: selected ? theme.secondaryAccent : theme.backgroundSelected,
                           },
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText
                           type="small"
-                          style={selected ? styles.pillLabelSelected : undefined}
-                          themeColor={selected ? undefined : 'text'}>
+                          themeColor={selected ? 'onSecondaryAccent' : 'text'}>
                           {interest}
                         </ThemedText>
                       </Pressable>
@@ -313,7 +324,7 @@ export function ProfileForm({
               </View>
 
               {errorMessage ? (
-                <ThemedText type="small" style={styles.errorText}>
+                <ThemedText themeColor="error" type="small" style={styles.errorText}>
                   {errorMessage}
                 </ThemedText>
               ) : null}
@@ -404,14 +415,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Spacing.five,
   },
-  pillLabelSelected: {
-    color: '#fdfbf7',
-  },
   pressed: {
     opacity: 0.8,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
   button: {

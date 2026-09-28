@@ -2,6 +2,7 @@ import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
   Keyboard,
@@ -16,7 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { fetchMyConnections, getConnectionStatus } from '@/lib/connections';
@@ -28,6 +29,7 @@ import {
   sendMessage,
   subscribeToConversationMessages,
 } from '@/lib/messages';
+import { openReport, openSafetyMenu } from '@/lib/safety';
 import { useUnreadMessages } from '@/lib/unread-messages';
 import type { Message, Profile } from '@/lib/types';
 
@@ -213,6 +215,20 @@ export default function ChatScreen() {
   const displayName = otherUser?.full_name || otherUser?.username || '';
   const canSend = draft.trim().length > 0 && isConnected;
 
+  // Long-press (or the screen-reader action) on one of their messages.
+  function handleReportMessage(message: ChatMessage) {
+    if (!otherUser || message.sender_id === myId || message.id.startsWith('temp-')) return;
+    Alert.alert('Report this message?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Report',
+        style: 'destructive',
+        onPress: () =>
+          openReport(otherUser.id, 'message', { contextId: message.id, name: displayName }),
+      },
+    ]);
+  }
+
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen
@@ -230,6 +246,19 @@ export default function ChatScreen() {
                 </ThemedText>
               </Pressable>
             ) : null,
+          headerRight: () =>
+            otherUser ? (
+              <Pressable
+                onPress={() => openSafetyMenu(displayName || 'this person', otherUser.id, 'message')}
+                hitSlop={Spacing.three}
+                accessibilityRole="button"
+                accessibilityLabel={`More options for ${displayName || 'this person'}`}
+                accessibilityHint="Report or block">
+                <ThemedText type="subtitle" themeColor="textSecondary">
+                  ⋯
+                </ThemedText>
+              </Pressable>
+            ) : null,
         }}
       />
 
@@ -239,7 +268,7 @@ export default function ChatScreen() {
         ) : !otherUser ? (
           <View style={styles.centeredMessage}>
             <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
-              This conversation couldn&apos;t be found.
+              This conversation isn&apos;t available.
             </ThemedText>
           </View>
         ) : messages.length === 0 ? (
@@ -285,9 +314,17 @@ export default function ChatScreen() {
                       <ThemedText style={styles.bubbleTextMine}>{item.body}</ThemedText>
                     </View>
                   ) : (
-                    <ThemedView type="backgroundElement" style={styles.bubble}>
-                      <ThemedText>{item.body}</ThemedText>
-                    </ThemedView>
+                    <Pressable
+                      onLongPress={() => handleReportMessage(item)}
+                      delayLongPress={400}
+                      accessibilityActions={[{ name: 'report', label: 'Report message' }]}
+                      onAccessibilityAction={(event) => {
+                        if (event.nativeEvent.actionName === 'report') handleReportMessage(item);
+                      }}>
+                      <ThemedView type="backgroundElement" style={styles.bubble}>
+                        <ThemedText>{item.body}</ThemedText>
+                      </ThemedView>
+                    </Pressable>
                   )}
 
                   {!sameGroupBelow ? (
@@ -305,7 +342,7 @@ export default function ChatScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Retry sending this message"
                       style={isMine ? styles.timestampMine : styles.timestampTheirs}>
-                      <ThemedText type="small" style={styles.failedText}>
+                      <ThemedText themeColor="error" type="small" style={styles.failedText}>
                         Failed to send · Tap to retry
                       </ThemedText>
                     </Pressable>
@@ -420,7 +457,6 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.one,
   },
   failedText: {
-    color: ErrorColor,
   },
   inputRow: {
     flexDirection: 'row',

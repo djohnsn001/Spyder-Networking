@@ -198,10 +198,21 @@ function getMarkerFootprint(memberCount: number): number {
   return memberCount <= 1 ? AVATAR_SIZE : GROUP_MARKER_SIZE;
 }
 
-// Rounds to ~1km happen server-side inside update_my_location — the raw
-// GPS fix is only ever used locally to call it, never stored as-is.
+// update_my_location snaps the fix to a ~5 km² grid server-side, so the
+// raw GPS fix is never stored as-is — and it stores nothing at all while
+// the caller's sharing is off.
 export async function updateMyLocation(lat: number, lng: number) {
   const { error } = await supabase.rpc('update_my_location', { lat, lng });
+  if (error) throw error;
+}
+
+// "Show me on the map". Turning it off also deletes the saved spot (a
+// database trigger does that).
+export async function setLocationSharing(userId: string, on: boolean) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ location_sharing: on ? 'connections' : 'off' })
+    .eq('id', userId);
   if (error) throw error;
 }
 

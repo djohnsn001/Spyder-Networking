@@ -1,18 +1,36 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { EventAttendees } from '@/components/event-attendees';
+import { EventLocation } from '@/components/event-location';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, DangerColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, DangerColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
-import { deleteEvent, fetchEvent, formatEventTime, setGoing } from '@/lib/events';
-import type { EventSummary } from '@/lib/types';
+import {
+  deleteEvent,
+  fetchEvent,
+  formatEventTime,
+  getEventAttendees,
+  setGoing,
+} from '@/lib/events';
+import type { EventAttendee, EventSummary } from '@/lib/types';
 
 type LoadState = 'loading' | 'loaded' | 'missing' | 'error';
+
+// Who's going is a nice-to-have: if it fails, the rest of the sheet still works.
+async function loadAttendees(eventId: string): Promise<EventAttendee[]> {
+  try {
+    return await getEventAttendees(eventId);
+  } catch (error) {
+    if (__DEV__) console.warn('Failed to load attendees', error);
+    return [];
+  }
+}
 
 // Bottom sheet opened by tapping an event pin on the Map tab. It's a
 // fitToContents formSheet: the sheet takes its height from this content, so
@@ -25,6 +43,7 @@ export default function EventDetailScreen() {
   const insets = useSafeAreaInsets();
 
   const [event, setEvent] = useState<EventSummary | null>(null);
+  const [attendees, setAttendees] = useState<EventAttendee[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [isUpdatingRsvp, setIsUpdatingRsvp] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -37,12 +56,13 @@ export default function EventDetailScreen() {
       let cancelled = false;
       (async () => {
         try {
-          const data = await fetchEvent(id);
+          const [data, people] = await Promise.all([fetchEvent(id), loadAttendees(id)]);
           if (cancelled) return;
           setEvent(data);
+          setAttendees(people);
           setLoadState(data ? 'loaded' : 'missing');
         } catch (error) {
-          console.error('Failed to load event', error);
+          if (__DEV__) console.warn('Failed to load event', error);
           if (!cancelled) setLoadState('error');
         }
       })();
@@ -62,14 +82,30 @@ export default function EventDetailScreen() {
     setEvent({
       ...event,
       is_going: nextGoing,
-      attendee_count: event.attendee_count + (nextGoing ? 1 : -1),
+      going_count: event.going_count + (nextGoing ? 1 : -1),
     });
     try {
-      await setGoing(event.id, myId, nextGoing);
+      const result = await setGoing(event.id, myId, nextGoing);
+      if (result === 'rate_limited') {
+        setEvent(previous);
+        setActionError("You've RSVP'd to a lot of events today. Try again tomorrow.");
+      } else if (result === 'unavailable') {
+        setEvent(previous);
+        setActionError("This event isn't taking RSVPs anymore.");
+      } else {
+        // Refetch: going unlocks the exact spot and place name (and
+        // un-going hides them again), which only the server knows.
+        const [fresh, people] = await Promise.all([
+          fetchEvent(event.id).catch(() => null),
+          loadAttendees(event.id),
+        ]);
+        if (fresh) setEvent(fresh);
+        setAttendees(people);
+      }
     } catch (error) {
-      console.error('Failed to update RSVP', error);
+      if (__DEV__) console.warn('Failed to update RSVP', error);
       setEvent(previous);
-      setActionError("Couldn't update your RSVP. Try again.");
+      setActionError("Couldn't update your RSVP. Check your connection and try again.");
     } finally {
       setIsUpdatingRsvp(false);
     }
@@ -84,7 +120,7 @@ export default function EventDetailScreen() {
       await deleteEvent(event.id);
       router.back();
     } catch (error) {
-      console.error('Failed to delete event', error);
+      if (__DEV__) console.warn('Failed to delete event', error);
       setActionError("Couldn't delete this event. Try again.");
       setIsDeleting(false);
     }
@@ -92,14 +128,27 @@ export default function EventDetailScreen() {
 
   // Close the sheet first so the profile opens as a normal screen rather
   // than stacked inside the sheet.
-  function handleOpenCreator() {
-    if (!event) return;
+  function openProfile(userId: string) {
     router.back();
-    if (event.creator_id === myId) {
+    if (userId === myId) {
       router.navigate('/profile');
     } else {
-      router.push(`/user/${event.creator_id}`);
+      router.push(`/user/${userId}`);
     }
+  }
+
+  // Alert works the same on iOS and Android, so no platform-specific menu.
+  function openMoreMenu() {
+    if (!event) return;
+    const eventId = event.id;
+    Alert.alert(event.title, undefined, [
+      {
+        text: 'Report event',
+        style: 'destructive',
+        onPress: () => router.push(`/event/${eventId}/report`),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   if (loadState === 'loading') {
@@ -123,9 +172,10 @@ export default function EventDetailScreen() {
   }
 
   const isCreator = event.creator_id === myId;
+  const isActive = event.status === 'active';
   const creatorName = event.creator_full_name || event.creator_username || 'Someone';
   const hasEnded = new Date(event.effective_ends_at).getTime() <= Date.now();
-  const goingLabel = event.attendee_count === 1 ? '1 going' : `${event.attendee_count} going`;
+  const goingLabel = event.going_count === 1 ? '1 going' : `${event.going_count} going`;
 
   return (
     // iOS already pads a fitToContents sheet for the home indicator.
@@ -134,25 +184,54 @@ export default function EventDetailScreen() {
         styles.content,
         { paddingBottom: Spacing.four + (Platform.OS === 'android' ? insets.bottom : 0) },
       ]}>
-      <View style={styles.titleBlock}>
-        <ThemedText type="subtitle" style={styles.title}>
-          {event.title}
-        </ThemedText>
-        <ThemedText type="smallBold" style={styles.time}>
-          {formatEventTime(event.starts_at, event.ends_at)}
-        </ThemedText>
-        {event.location_name ? (
-          <ThemedText type="default" themeColor="textSecondary">
-            {event.location_name}
+      {/* Only the host (and admins) ever see an event that isn't active. */}
+      {!isActive ? (
+        <View style={styles.banner}>
+          <ThemedText themeColor="error" type="smallBold" style={styles.bannerText}>
+            {event.status === 'hidden'
+              ? "This event is under review and isn't visible to others."
+              : 'This event was removed.'}
           </ThemedText>
-        ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.titleBlock}>
+        <View style={styles.titleRow}>
+          <ThemedText type="subtitle" style={styles.title}>
+            {event.title}
+          </ThemedText>
+          {!isCreator ? (
+            <Pressable
+              onPress={openMoreMenu}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="More options"
+              style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
+              <ThemedText type="subtitle" themeColor="textSecondary" style={styles.moreLabel}>
+                ⋯
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </View>
+        <View style={styles.timeRow}>
+          <ThemedText type="smallBold" style={styles.time}>
+            {formatEventTime(event.starts_at, event.ends_at)}
+          </ThemedText>
+          {event.time_changed_at ? (
+            <View style={styles.badge}>
+              <ThemedText type="small" style={styles.badgeText}>
+                🕒 Time changed
+              </ThemedText>
+            </View>
+          ) : null}
+        </View>
         <ThemedText type="small" themeColor="textSecondary">
           {event.visibility === 'connections' ? 'Connections only' : 'Public'} · {goingLabel}
         </ThemedText>
       </View>
 
       <Pressable
-        onPress={handleOpenCreator}
+        onPress={() => openProfile(event.creator_id)}
         accessibilityRole="button"
         accessibilityLabel={`View ${creatorName}'s profile`}
         style={({ pressed }) => [styles.creatorRow, pressed && styles.pressed]}>
@@ -167,8 +246,17 @@ export default function EventDetailScreen() {
 
       {event.description ? <ThemedText type="default">{event.description}</ThemedText> : null}
 
+      <EventLocation event={event} />
+
+      <EventAttendees
+        attendees={attendees}
+        isHost={isCreator}
+        myId={myId}
+        onOpenProfile={openProfile}
+      />
+
       {actionError ? (
-        <ThemedText type="small" style={styles.errorText}>
+        <ThemedText themeColor="error" type="small" style={styles.errorText}>
           {actionError}
         </ThemedText>
       ) : null}
@@ -178,41 +266,47 @@ export default function EventDetailScreen() {
           This event has ended.
         </ThemedText>
       ) : isCreator ? (
-        <View style={styles.actionRow}>
-          <Pressable
-            onPress={() => router.push(`/event/${event.id}/edit`)}
-            disabled={isDeleting}
-            accessibilityRole="button"
-            accessibilityLabel="Edit event"
-            style={({ pressed }) => [
-              styles.button,
-              styles.rowButton,
-              styles.secondaryButton,
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText type="smallBold">Edit</ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => setConfirmingDelete(true)}
-            disabled={isDeleting}
-            accessibilityRole="button"
-            accessibilityLabel="Delete event"
-            style={({ pressed }) => [
-              styles.button,
-              styles.rowButton,
-              { backgroundColor: DangerColor },
-              pressed && styles.pressed,
-            ]}>
-            {isDeleting ? (
-              <ActivityIndicator color="#fdfbf7" />
-            ) : (
-              <ThemedText type="smallBold" style={styles.buttonLabel}>
-                Delete
-              </ThemedText>
-            )}
-          </Pressable>
-        </View>
-      ) : (
+        event.status === 'removed' ? null : (
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={() => router.push(`/event/${event.id}/edit`)}
+              disabled={isDeleting}
+              accessibilityRole="button"
+              accessibilityLabel="Edit event"
+              style={({ pressed }) => [
+                styles.button,
+                styles.rowButton,
+                styles.secondaryButton,
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold">Edit</ThemedText>
+            </Pressable>
+            {/* The server won't delete an event that's under review, so
+                don't offer it. */}
+            {isActive ? (
+              <Pressable
+                onPress={() => setConfirmingDelete(true)}
+                disabled={isDeleting}
+                accessibilityRole="button"
+                accessibilityLabel="Delete event"
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.rowButton,
+                  { backgroundColor: DangerColor },
+                  pressed && styles.pressed,
+                ]}>
+                {isDeleting ? (
+                  <ActivityIndicator color="#fdfbf7" />
+                ) : (
+                  <ThemedText type="smallBold" style={styles.buttonLabel}>
+                    Delete
+                  </ThemedText>
+                )}
+              </Pressable>
+            ) : null}
+          </View>
+        )
+      ) : isActive ? (
         <Pressable
           onPress={handleToggleGoing}
           disabled={isUpdatingRsvp}
@@ -228,7 +322,7 @@ export default function EventDetailScreen() {
             {event.is_going ? "✓ Going · Tap if you can't make it" : 'Going'}
           </ThemedText>
         </Pressable>
-      )}
+      ) : null}
       <ConfirmDialog
         visible={confirmingDelete}
         title="Delete this event?"
@@ -257,14 +351,50 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     paddingTop: Spacing.five,
   },
+  banner: {
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    backgroundColor: 'rgba(229, 107, 111, 0.15)',
+  },
+  bannerText: {
+    textAlign: 'center',
+  },
   titleBlock: {
     gap: Spacing.one,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
   title: {
+    flexShrink: 1,
     fontSize: 26,
     lineHeight: 34,
   },
+  moreButton: {
+    marginLeft: 'auto',
+    paddingHorizontal: Spacing.one,
+  },
+  moreLabel: {
+    lineHeight: 34,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   time: {
+    color: AccentColor,
+  },
+  badge: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(131, 101, 93, 0.15)',
+  },
+  badgeText: {
     color: AccentColor,
   },
   creatorRow: {
@@ -302,7 +432,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   errorText: {
-    color: ErrorColor,
     textAlign: 'center',
   },
 });

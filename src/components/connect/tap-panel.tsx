@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import {
   friendlyConnectError,
   getBumpResult,
@@ -197,7 +197,7 @@ export function TapPanel({
       </ThemedText>
 
       {available === false ? (
-        <ThemedText type="small" style={[styles.center, { color: ErrorColor }]}>
+        <ThemedText type="small" themeColor="error" style={styles.center}>
           This phone can&apos;t detect taps. Use your QR code instead.
         </ThemedText>
       ) : null}

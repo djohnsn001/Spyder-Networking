@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -15,10 +16,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Avatar } from '@/components/avatar';
 import { ClusterListModal } from '@/components/cluster-list-modal';
-import { DraftEventMarker, EventMarker } from '@/components/event-marker';
+import { DraftEventMarker, EventMarker, eventMarkerKey } from '@/components/event-marker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BorderWidth, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { fetchEventsInRegion } from '@/lib/events';
 import {
@@ -32,6 +34,7 @@ import {
   GROUP_MARKER_SIZE,
   regionToClusterDistance,
   resolveBubbleOverlaps,
+  setLocationSharing,
   updateMyLocation,
   type LocationCluster,
 } from '@/lib/map';
@@ -46,17 +49,18 @@ const BOISE_REGION = {
   longitudeDelta: 0.1,
 };
 
-// Fine white threads, so the web reads as a delicate layer over the map
-// rather than heavy route lines. Your own spokes (you → a connection) are a
-// touch thicker and outlined, so they stand out from the mutual lines
-// between two of your connections.
+// Fine threads, so the web reads as a delicate layer over the map rather
+// than heavy route lines. Your own spokes (you → a connection) are a touch
+// thicker and a stronger color than the mutual lines between two of your
+// connections. Colors come from the theme (webSpoke / webMutual).
 const SPOKE_LINE_WIDTH = 2;
 const MUTUAL_LINE_WIDTH = 1.75;
-const WEB_LINE_COLOR = '#FFFFFF';
-// Spokes sit on a slightly wider dark outline ("casing"), the same trick
-// map apps use for routes — it keeps them readable on light maps too.
-const SPOKE_CASING_WIDTH = SPOKE_LINE_WIDTH + 2;
-const SPOKE_CASING_COLOR = 'rgba(20,14,11,0.55)';
+// Every line sits on a slightly wider contrasting outline ("casing"), the
+// same trick map apps use for routes — it keeps the thin lines readable
+// where they cross roads and labels.
+const CASING_PADDING = 2;
+const SPOKE_CASING_WIDTH = SPOKE_LINE_WIDTH + CASING_PADDING;
+const MUTUAL_CASING_WIDTH = MUTUAL_LINE_WIDTH + CASING_PADDING;
 
 // How long the map has to sit still after a pan/zoom before events for the
 // new area are fetched, so a long swipe triggers one request, not dozens.
@@ -78,6 +82,7 @@ function IndividualAvatarMarker({
   coordinate: LatLng;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   const displayName = member.full_name || member.username || '';
   const haloSize = AVATAR_HALO_SIZE;
 
@@ -91,6 +96,7 @@ function IndividualAvatarMarker({
         style={[
           styles.halo,
           { width: haloSize, height: haloSize, borderRadius: haloSize / 2 },
+          { backgroundColor: theme.halo, borderColor: theme.haloBorder },
         ]}>
         <Avatar uri={member.avatar_url} name={displayName} size={AVATAR_SIZE} />
       </View>
@@ -111,14 +117,19 @@ function GroupMarker({
   count: number;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Marker
       coordinate={coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={onPress}
       accessibilityLabel={`${count} builders in this area`}>
-      <View style={styles.groupMarker}>
-        <ThemedText type="smallBold" style={styles.groupMarkerText}>
+      <View
+        style={[
+          styles.groupMarker,
+          { backgroundColor: theme.secondaryAccent, borderColor: theme.markerOutline },
+        ]}>
+        <ThemedText type="smallBold" themeColor="onSecondaryAccent">
           {count}
         </ThemedText>
       </View>
@@ -129,9 +140,19 @@ function GroupMarker({
 type PermissionState = 'checking' | 'granted' | 'denied';
 type WebState = 'idle' | 'loading' | 'loaded' | 'error';
 
+// Remembers "Not now" on the you're-hidden banner, per account, on this phone.
+function hiddenBannerKey(userId: string) {
+  return `bolas.map-hidden-banner-dismissed.${userId}`;
+}
+
 export default function MapScreen() {
-  const { session } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const myId = session?.user.id;
+  // "Show me on the map" (Settings). Off is the default for new accounts.
+  const isSharing = profile?.location_sharing === 'connections';
+  // null until AsyncStorage answers, so the banner doesn't flash.
+  const [hiddenBannerDismissed, setHiddenBannerDismissed] = useState<boolean | null>(null);
+  const [isEnablingSharing, setIsEnablingSharing] = useState(false);
 
   const [permissionState, setPermissionState] = useState<PermissionState>('checking');
   const [myPosition, setMyPosition] = useState<{ latitude: number; longitude: number } | null>(
@@ -144,6 +165,8 @@ export default function MapScreen() {
   const [longitudeDelta, setLongitudeDelta] = useState(BOISE_REGION.longitudeDelta);
   const lastRegionUpdateRef = useRef(0);
   const [events, setEvents] = useState<EventSummary[]>([]);
+  // The last event fetch failed; shows a small banner with Retry.
+  const [eventsFailed, setEventsFailed] = useState(false);
   const [draftPin, setDraftPin] = useState<LatLng | null>(null);
   // The latest settled region — used for the "+" button (map center) and
   // for refetching events when the tab regains focus.
@@ -154,7 +177,17 @@ export default function MapScreen() {
   // Both platforms follow the app's own light/dark choice: Apple Maps via
   // userInterfaceStyle, Google Maps (Android) via our own custom style.
   const { resolvedScheme } = useThemePreference();
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
+  // Shared look for every banner floating over the map.
+  const overlayStyle = [
+    styles.floating,
+    styles.overlayOutline,
+    { borderColor: theme.overlayBorder, shadowColor: theme.shadow },
+  ];
+  // The map runs under the tab bar, so bottom banners clear both the tab
+  // bar and the home-indicator strip below it.
+  const bottomBannerPosition = { bottom: insets.bottom + BottomTabInset + Spacing.three };
   const androidMapStyle = resolvedScheme === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE;
 
   // Recluster continuously while the user pinches/pans, not just once they
@@ -173,10 +206,15 @@ export default function MapScreen() {
     const requestId = ++eventRequestIdRef.current;
     try {
       const data = await fetchEventsInRegion(region);
-      if (requestId === eventRequestIdRef.current) setEvents(data);
+      if (requestId === eventRequestIdRef.current) {
+        setEvents(data);
+        setEventsFailed(false);
+      }
     } catch (error) {
-      // Keep whatever pins are already showing; the next pan retries.
-      console.error('Failed to load map events', error);
+      // Keep whatever pins are already showing; the next pan (or Retry)
+      // tries again. Raw errors are for developers only.
+      if (__DEV__) console.warn('Failed to load map events', error);
+      if (requestId === eventRequestIdRef.current) setEventsFailed(true);
     }
   }, []);
 
@@ -257,10 +295,14 @@ export default function MapScreen() {
           longitude: position.coords.longitude,
         });
 
-        try {
-          await updateMyLocation(position.coords.latitude, position.coords.longitude);
-        } catch (error) {
-          console.error('Failed to save location', error);
+        // Hidden users' positions never leave the phone (the server would
+        // refuse to keep them anyway). Turning sharing on re-runs this.
+        if (isSharing) {
+          try {
+            await updateMyLocation(position.coords.latitude, position.coords.longitude);
+          } catch (error) {
+            console.error('Failed to save location', error);
+          }
         }
 
         if (cancelled) return;
@@ -270,8 +312,36 @@ export default function MapScreen() {
       return () => {
         cancelled = true;
       };
-    }, [loadWeb]),
+    }, [loadWeb, isSharing]),
   );
+
+  useEffect(() => {
+    if (!myId) return;
+    AsyncStorage.getItem(hiddenBannerKey(myId))
+      .then((stored) => setHiddenBannerDismissed(stored === 'true'))
+      .catch(() => setHiddenBannerDismissed(false));
+  }, [myId]);
+
+  const dismissHiddenBanner = useCallback(() => {
+    setHiddenBannerDismissed(true);
+    if (!myId) return;
+    AsyncStorage.setItem(hiddenBannerKey(myId), 'true').catch((error) => {
+      if (__DEV__) console.warn('Failed to save banner dismissal', error);
+    });
+  }, [myId]);
+
+  const turnOnSharing = useCallback(async () => {
+    if (!myId) return;
+    setIsEnablingSharing(true);
+    try {
+      await setLocationSharing(myId, true);
+      await refreshProfile();
+    } catch (error) {
+      if (__DEV__) console.warn('Failed to turn on location sharing', error);
+    } finally {
+      setIsEnablingSharing(false);
+    }
+  }, [myId, refreshProfile]);
 
   // The map already shows me via showsUserLocation, so don't double it up
   // with a marker from my own row in get_connection_locations().
@@ -279,6 +349,14 @@ export default function MapScreen() {
     () => connections.filter((c) => c.id !== myId),
     [connections, myId],
   );
+
+  // One bottom banner at a time: loading/error win, then this one, then the
+  // "your map grows" nudge.
+  const showHiddenBanner =
+    !isSharing &&
+    hiddenBannerDismissed === false &&
+    webState !== 'loading' &&
+    webState !== 'error';
 
   const clusterDistance = useMemo(() => regionToClusterDistance(longitudeDelta), [longitudeDelta]);
 
@@ -398,24 +476,22 @@ export default function MapScreen() {
         // top-right corner — nudge it down below the "+" button.
         compassOffset={{ x: 0, y: FAB_SIZE + Spacing.two }}
         showsUserLocation={permissionState === 'granted'}>
-        {/* Spoke outlines first, then every white line on top, so where two
-            lines cross an outline never cuts across a white line. */}
-        {webLines
-          .filter((line) => line.kind === 'spoke')
-          .map((line) => (
-            <Polyline
-              key={`casing-${line.key}`}
-              coordinates={line.coordinates}
-              strokeColor={SPOKE_CASING_COLOR}
-              strokeWidth={SPOKE_CASING_WIDTH}
-              zIndex={1}
-            />
-          ))}
+        {/* All outlines first, then every line on top, so where two lines
+            cross an outline never cuts across a line. */}
+        {webLines.map((line) => (
+          <Polyline
+            key={`casing-${line.key}`}
+            coordinates={line.coordinates}
+            strokeColor={theme.webCasing}
+            strokeWidth={line.kind === 'spoke' ? SPOKE_CASING_WIDTH : MUTUAL_CASING_WIDTH}
+            zIndex={1}
+          />
+        ))}
         {webLines.map((line) => (
           <Polyline
             key={`line-${line.key}`}
             coordinates={line.coordinates}
-            strokeColor={WEB_LINE_COLOR}
+            strokeColor={line.kind === 'spoke' ? theme.webSpoke : theme.webMutual}
             strokeWidth={line.kind === 'spoke' ? SPOKE_LINE_WIDTH : MUTUAL_LINE_WIDTH}
             zIndex={2}
           />
@@ -439,10 +515,12 @@ export default function MapScreen() {
           ),
         )}
 
-        {/* Drawn after the people markers so events sit on top. */}
+        {/* Drawn after the people markers so events sit on top. The theme is
+            part of the key because event pins stop redrawing after first
+            paint — a light/dark switch needs to remount them. */}
         {events.map((event) => (
           <EventMarker
-            key={`${event.id}-${event.starts_at}`}
+            key={`${eventMarkerKey(event)}-${resolvedScheme}`}
             event={event}
             onPress={() => router.push(`/event/${event.id}`)}
           />
@@ -463,32 +541,94 @@ export default function MapScreen() {
         accessibilityHint="Or long-press anywhere on the map to pick a spot"
         style={({ pressed }) => [
           styles.fab,
-          { top: insets.top + Spacing.two },
+          styles.floating,
+          {
+            top: insets.top + Spacing.two,
+            backgroundColor: theme.accent,
+            borderColor: theme.markerOutline,
+            shadowColor: theme.shadow,
+          },
           pressed && styles.fabPressed,
         ]}>
-        <ThemedText style={styles.fabLabel}>+</ThemedText>
+        <ThemedText themeColor="onAccent" style={styles.fabLabel}>
+          +
+        </ThemedText>
       </Pressable>
 
+      {/* Top-left, clear of the "+" button and the bottom banners. */}
+      {eventsFailed ? (
+        <ThemedView
+          type="overlay"
+          style={[styles.eventsBanner, overlayStyle, { top: insets.top + Spacing.two }]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.eventsBannerText}>
+            {"Couldn't load events. Check your connection."}
+          </ThemedText>
+          <Pressable
+            onPress={() => void loadEvents(regionRef.current)}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading events">
+            <ThemedText type="smallBold" themeColor="accentText">
+              Retry
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : null}
+
       {webState === 'loading' ? (
-        <ThemedView type="backgroundElement" style={styles.banner}>
-          <ActivityIndicator />
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
+          <ActivityIndicator color={theme.accentText} />
           <ThemedText type="small">Loading your connections…</ThemedText>
         </ThemedView>
       ) : null}
 
       {webState === 'error' ? (
-        <ThemedView type="backgroundElement" style={styles.banner}>
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
           <ThemedText type="small" themeColor="textSecondary">
-            Couldn't load your connections.
+            {"Couldn't load your connections."}
           </ThemedText>
           <Pressable onPress={loadWeb} accessibilityRole="button" accessibilityLabel="Retry">
-            <ThemedText type="smallBold">Retry</ThemedText>
+            <ThemedText type="smallBold" themeColor="accentText">
+              Retry
+            </ThemedText>
           </Pressable>
         </ThemedView>
       ) : null}
 
-      {webState === 'loaded' && otherConnections.length === 0 ? (
-        <ThemedView type="backgroundElement" style={styles.banner}>
+      {showHiddenBanner ? (
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            {"You're hidden on the map. Turn on to let people you've met in person see your approximate area."}
+          </ThemedText>
+          <Pressable
+            onPress={() => void turnOnSharing()}
+            disabled={isEnablingSharing}
+            hitSlop={Spacing.three}
+            accessibilityRole="button"
+            accessibilityLabel="Turn on showing me on the map"
+            accessibilityState={{ disabled: isEnablingSharing }}>
+            {isEnablingSharing ? (
+              <ActivityIndicator color={theme.accentText} />
+            ) : (
+              <ThemedText type="smallBold" themeColor="accentText">
+                Turn on
+              </ThemedText>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={dismissHiddenBanner}
+            hitSlop={Spacing.three}
+            accessibilityRole="button"
+            accessibilityLabel="Not now"
+            accessibilityHint="You can turn this on later in Settings">
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Not now
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : null}
+
+      {webState === 'loaded' && otherConnections.length === 0 && !showHiddenBanner ? (
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
           <ThemedText type="small" themeColor="textSecondary">
             Your map grows when you meet people.
           </ThemedText>
@@ -496,7 +636,7 @@ export default function MapScreen() {
             onPress={() => router.push('/connect')}
             accessibilityRole="button"
             accessibilityLabel="Connect in person">
-            <ThemedText type="smallBold" style={{ color: AccentColor }}>
+            <ThemedText type="smallBold" themeColor="accentText">
               Connect in person
             </ThemedText>
           </Pressable>
@@ -540,15 +680,33 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three,
   },
+  eventsBanner: {
+    position: 'absolute',
+    left: Spacing.four,
+    right: Spacing.four + FAB_SIZE + Spacing.two,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  eventsBannerText: {
+    flexShrink: 1,
+  },
+  // `bottom` is set inline (bottomBannerPosition) from the safe-area inset.
+  // Wraps so a long message pushes its action onto a second, centered line
+  // instead of running out of the box.
   banner: {
     position: 'absolute',
     left: Spacing.four,
     right: Spacing.four,
-    bottom: BottomTabInset + Spacing.three,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.two,
+    columnGap: Spacing.two,
+    rowGap: Spacing.one,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
@@ -558,9 +716,7 @@ const styles = StyleSheet.create({
   halo: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(250,245,236,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,245,236,0.6)',
+    borderWidth: BorderWidth.thin,
   },
   groupMarker: {
     width: GROUP_MARKER_SIZE,
@@ -568,12 +724,7 @@ const styles = StyleSheet.create({
     borderRadius: GROUP_MARKER_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AccentColor,
-    borderWidth: 2,
-    borderColor: '#faf5ec',
-  },
-  groupMarkerText: {
-    color: '#fdfbf7',
+    borderWidth: BorderWidth.thick,
   },
   // Top-right, clear of the tab bar; `top` is set inline from the safe-area
   // inset so it sits just below the status bar / notch.
@@ -585,20 +736,25 @@ const styles = StyleSheet.create({
     borderRadius: FAB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: AccentColor,
-    borderWidth: 2,
-    borderColor: '#faf5ec',
-    shadowColor: '#000',
+    borderWidth: BorderWidth.thick,
+  },
+  // Anything floating over the map (the "+" button, banners) gets a soft
+  // drop shadow so it lifts off any map color. shadowColor is set inline
+  // from the theme.
+  floating: {
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
+  // A thin edge for banners, so they don't blend into a same-toned map.
+  overlayOutline: {
+    borderWidth: BorderWidth.thin,
+  },
   fabPressed: {
     opacity: 0.85,
   },
   fabLabel: {
-    color: '#fdfbf7',
     fontSize: 28,
     lineHeight: 32,
     fontWeight: 600,

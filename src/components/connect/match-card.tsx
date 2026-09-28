@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -14,7 +15,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import {
@@ -24,6 +25,7 @@ import {
 } from '@/lib/connect/api';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
 import { getOrStartDirectConversation } from '@/lib/messages';
+import { openReport } from '@/lib/safety';
 
 // The server allows 30 s (undo_until) to cover lag; the UI offers 10.
 const UNDO_SECONDS = 10;
@@ -68,7 +70,13 @@ export function MatchCard({
     );
     strand.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
     if (canUndo) {
-      ring.value = withTiming(0, { duration: UNDO_SECONDS * 1000, easing: Easing.linear });
+      // The Undo countdown is a timer, so it keeps running with Reduce Motion
+      // on. The strand above is decoration and follows the system setting.
+      ring.value = withTiming(0, {
+        duration: UNDO_SECONDS * 1000,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.Never,
+      });
     }
   }, [match, canUndo, strand, ring]);
 
@@ -110,6 +118,13 @@ export function MatchCard({
     if (router.canGoBack()) router.back();
     else router.replace('/');
     router.push(path);
+  }
+
+  // Where unsafe meetups surface first, so reporting is one tap away.
+  function handleReport() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+    openReport(other.id, 'in_person', { name: otherName });
   }
 
   async function handleMessage() {
@@ -223,7 +238,7 @@ export function MatchCard({
           ) : null}
 
           {error ? (
-            <ThemedText type="small" style={[styles.center, { color: ErrorColor }]}>
+            <ThemedText type="small" themeColor="error" style={styles.center}>
               {error}
             </ThemedText>
           ) : null}
@@ -261,6 +276,16 @@ export function MatchCard({
               Done
             </ThemedText>
           </Pressable>
+
+          <Pressable
+            onPress={handleReport}
+            hitSlop={Spacing.three}
+            accessibilityRole="button"
+            accessibilityLabel={`Report ${otherName}`}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.reportLink}>
+              Report
+            </ThemedText>
+          </Pressable>
         </ThemedView>
       </View>
     </Modal>
@@ -268,6 +293,10 @@ export function MatchCard({
 }
 
 const styles = StyleSheet.create({
+  reportLink: {
+    textDecorationLine: 'underline',
+    marginTop: Spacing.one,
+  },
   backdrop: {
     flex: 1,
     alignItems: 'center',
