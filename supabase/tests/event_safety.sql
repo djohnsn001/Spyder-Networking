@@ -7,7 +7,8 @@
 --
 --   npx supabase db query --linked -f supabase/tests/event_safety.sql
 --
--- Sections: A = hosting trust, B = write lock + validation, C = location.
+-- Sections: A = hosting trust, B = write lock + validation, C = location,
+-- D = attendee privacy.
 
 do $tests$
 declare
@@ -34,6 +35,12 @@ declare
   n int;
   eid uuid;
   eid_conn uuid;
+  eid_a uuid;
+  eid_h uuid;
+  eid_r uuid;
+  eid_e uuid;
+  x uuid;
+  succ int;
   e public.events%rowtype;
   t0 timestamptz := date_trunc('minute', now()) + interval '1 day';
 begin
@@ -511,6 +518,185 @@ begin
     and column_name in ('latitude', 'longitude', 'location_name');
   ok := n = 0;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C9 events.latitude / longitude / location_name dropped';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- D. Attendee privacy
+  -- =====================================================================
+
+  -- eid is u_trusted's public event from C (only the host is going so far).
+  -- Who knows whom: f1 met u_trusted in person; u_acq is an acquaintance of
+  -- f1, f2, f3; u_new is (from here on) an acquaintance of f2; u_rate knows
+  -- nobody.
+  insert into public.connections (requester_id, addressee_id, status) values (u_new, f2, 'accepted');
+  perform set_config('role', 'authenticated', true);
+  foreach x in array array[f1, f2, u_acq] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', x, 'role', 'authenticated')::text, true);
+    insert into public.event_attendees (event_id, user_id) values (eid, x);
+  end loop;
+
+  -- D1: a stranger sees the right count but no attendee rows.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_rate, 'role', 'authenticated')::text, true);
+  select s.going_count into n from public.event_summaries s where s.id = eid;
+  ok := n = 4;
+  select count(*) into n from public.event_attendees where event_id = eid;
+  ok := ok and n = 0;
+  select count(*) into n from public.get_event_attendees(eid);
+  ok := ok and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D1 stranger: going_count = 4, sees no attendee rows';
+  if not ok then fails := fails + 1; end if;
+
+  -- D2: someone connected to one attendee sees just that attendee.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_new, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_event_attendees(eid);
+  ok := n = 1 and exists (
+    select 1 from public.get_event_attendees(eid) g where g.user_id = f2 and g.is_connection and not g.is_host
+  );
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D2 connection of one attendee sees only that attendee';
+  if not ok then fails := fails + 1; end if;
+
+  -- D3: an attendee sees themselves plus their connections who are going
+  -- (f1: self, the host, u_acq — not f2), host listed first.
+  perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_event_attendees(eid);
+  ok := n = 3
+    and (select g.user_id from public.get_event_attendees(eid) g limit 1) = u_trusted
+    and not exists (select 1 from public.get_event_attendees(eid) g where g.user_id = f2);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D3 attendee sees self + own connections (host first), not strangers';
+  if not ok then fails := fails + 1; end if;
+
+  -- D4: the host and an admin see everyone.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_event_attendees(eid);
+  ok := n = 4
+    and (select count(*) from public.get_event_attendees(eid) g where g.is_host and g.user_id = u_trusted) = 1;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_event_attendees(eid);
+  ok := ok and n = 4;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D4 host and admin see all 4 attendees';
+  if not ok then fails := fails + 1; end if;
+
+  -- D5: RSVP to a hidden, removed, or ended event fails; an active one works.
+  eid_h := (public.create_event('Hidden', null, null, 43.6, -116.2, t0, null, 'public') ->> 'event_id')::uuid;
+  eid_r := (public.create_event('Removed', null, null, 43.6, -116.2, t0, null, 'public') ->> 'event_id')::uuid;
+  eid_e := (public.create_event('Ended', null, null, 43.6, -116.2, t0, null, 'public') ->> 'event_id')::uuid;
+  eid_a := (public.create_event('Active', null, null, 43.6, -116.2, t0, null, 'public') ->> 'event_id')::uuid;
+  reset role;
+  update public.events set status = 'hidden' where id = eid_h;
+  update public.events set status = 'removed' where id = eid_r;
+  update public.events set starts_at = now() - interval '5 hours', ends_at = null where id = eid_e;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_rate, 'role', 'authenticated')::text, true);
+  n := 0;
+  foreach x in array array[eid_h, eid_r, eid_e] loop
+    begin
+      insert into public.event_attendees (event_id, user_id) values (x, u_rate);
+    exception when others then n := n + 1;
+    end;
+  end loop;
+  insert into public.event_attendees (event_id, user_id) values (eid_a, u_rate);
+  delete from public.event_attendees where event_id = eid_a and user_id = u_rate;
+  ok := n = 3;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D5 RSVP to hidden / removed / ended refused (' || n || '/3); active works';
+  if not ok then fails := fails + 1; end if;
+
+  -- D6: the 31st RSVP in a day fails — even when every one of them was
+  -- un-tapped straight away. u_rate has 1 so far (D5), so 29 more succeed.
+  succ := 0;
+  err := null;
+  for i in 1..40 loop
+    begin
+      insert into public.event_attendees (event_id, user_id) values (eid_a, u_rate);
+      delete from public.event_attendees where event_id = eid_a and user_id = u_rate;
+      succ := succ + 1;
+    exception when others then
+      err := sqlerrm;
+      exit;
+    end;
+  end loop;
+  ok := succ = 29 and err = 'rsvp_rate_limited';
+  begin
+    insert into public.event_attendees (event_id, user_id) values (eid, u_rate);
+    ok := false;
+  exception when others then
+    ok := ok and sqlerrm = 'rsvp_rate_limited';
+  end;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D6 31st RSVP in 24h -> rsvp_rate_limited, tapping off does not reset it (' || succ || ' ok)';
+  if not ok then fails := fails + 1; end if;
+
+  -- D7: admins are exempt (35 taps on someone else's event).
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  succ := 0;
+  for i in 1..35 loop
+    begin
+      insert into public.event_attendees (event_id, user_id) values (eid, u_admin);
+      delete from public.event_attendees where event_id = eid and user_id = u_admin;
+      succ := succ + 1;
+    exception when others then exit;
+    end;
+  end loop;
+  ok := succ = 35;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D7 admin is exempt from the RSVP limit (' || succ || '/35)';
+  if not ok then fails := fails + 1; end if;
+
+  -- D8: nobody can set going_count directly, not even the host.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  update public.events set going_count = 999 where id = eid;
+  select s.going_count into n from public.event_summaries s where s.id = eid;
+  ok := n = 4;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D8 direct update of going_count does nothing (still ' || n || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- D9: the host can't un-RSVP; an attendee can leave even after the event
+  -- is hidden.
+  delete from public.event_attendees where event_id = eid and user_id = u_trusted;
+  get diagnostics n = row_count;
+  ok := n = 0;
+  reset role;
+  update public.events set status = 'hidden' where id = eid;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_acq, 'role', 'authenticated')::text, true);
+  delete from public.event_attendees where event_id = eid and user_id = u_acq;
+  get diagnostics n = row_count;
+  ok := ok and n = 1;
+  reset role;
+  update public.events set status = 'active' where id = eid;
+  select going_count into n from public.events where id = eid;
+  ok := ok and n = 3;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D9 host cannot un-RSVP; attendee can leave a hidden event (count now ' || n || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- D10: RSVPs don't bump the event's updated_at (that means "host edited").
+  update public.events set updated_at = '2020-01-01' where id = eid;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', f3, 'role', 'authenticated')::text, true);
+  insert into public.event_attendees (event_id, user_id) values (eid, f3);
+  reset role;
+  select * into e from public.events where id = eid;
+  ok := e.updated_at = '2020-01-01' and e.going_count = 4;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D10 RSVP changes going_count but not updated_at';
+  if not ok then fails := fails + 1; end if;
+
+  -- D11: deleting an event with attendees works, hosts' automatic RSVPs are
+  -- never logged, and going_count matches the real rows for every event.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', f3, 'role', 'authenticated')::text, true);
+  insert into public.event_attendees (event_id, user_id) values (eid_a, f3);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  delete from public.events where id = eid_a;
+  get diagnostics n = row_count;
+  ok := n = 1;
+  reset role;
+  select count(*) into n
+  from public.event_rsvp_log l join public.events ev on ev.id = l.event_id
+  where ev.creator_id = l.user_id;
+  ok := ok and n = 0;
+  select count(*) into n
+  from public.events ev
+  where ev.going_count <> (select count(*) from public.event_attendees a where a.event_id = ev.id);
+  ok := ok and n = 0;
+  select count(*) into n from public.events;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D11 event delete ok; host RSVPs not logged; going_count right for all ' || n || ' events';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.
