@@ -24,6 +24,7 @@ import {
 } from '@/lib/connect/api';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
 import { getOrStartDirectConversation } from '@/lib/messages';
+import { openReport } from '@/lib/safety';
 
 // The server allows 30 s (undo_until) to cover lag; the UI offers 10.
 const UNDO_SECONDS = 10;
@@ -110,6 +111,13 @@ export function MatchCard({
     if (router.canGoBack()) router.back();
     else router.replace('/');
     router.push(path);
+  }
+
+  // Where unsafe meetups surface first, so reporting is one tap away.
+  function handleReport() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+    openReport(other.id, 'in_person', { name: otherName });
   }
 
   async function handleMessage() {
@@ -261,6 +269,16 @@ export function MatchCard({
               Done
             </ThemedText>
           </Pressable>
+
+          <Pressable
+            onPress={handleReport}
+            hitSlop={Spacing.three}
+            accessibilityRole="button"
+            accessibilityLabel={`Report ${otherName}`}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.reportLink}>
+              Report
+            </ThemedText>
+          </Pressable>
         </ThemedView>
       </View>
     </Modal>
@@ -268,6 +286,10 @@ export function MatchCard({
 }
 
 const styles = StyleSheet.create({
+  reportLink: {
+    textDecorationLine: 'underline',
+    marginTop: Spacing.one,
+  },
   backdrop: {
     flex: 1,
     alignItems: 'center',

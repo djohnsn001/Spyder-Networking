@@ -169,6 +169,13 @@ export default function SettingsScreen() {
           </ThemedView>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+            Privacy &amp; safety
+          </ThemedText>
+          <ThemedView type="backgroundElement" style={styles.group}>
+            <LinkRow label="Blocked users" onPress={() => router.push('/blocked-users')} />
+          </ThemedView>
+
+          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
             Legal
           </ThemedText>
           <ThemedView type="backgroundElement" style={styles.group}>

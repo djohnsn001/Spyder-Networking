@@ -28,13 +28,20 @@ import {
   type FlaggedEvent,
 } from '@/lib/events';
 import { friendlyRpcError } from '@/lib/rpc';
+import {
+  adminListUserReports,
+  adminResolveUserReport,
+  adminSetAccountStatus,
+  USER_REPORT_REASON_LABEL,
+  type AdminUserReportGroup,
+} from '@/lib/safety';
 
 // Internal moderation tool for the team (app_admins). Kept deliberately
 // plain. Every action is also checked on the server, so this screen's own
 // admin check is only about not showing an empty tool to regular users who
 // deep-link here.
 
-type Tab = 'flagged' | 'hosts';
+type Tab = 'people' | 'flagged' | 'hosts';
 
 const REASON_LABEL = Object.fromEntries(REPORT_REASONS.map((r) => [r.value, r.label]));
 
@@ -47,7 +54,7 @@ function confirm(title: string, message: string, confirmLabel: string, onConfirm
 
 export default function AdminScreen() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<Tab>('flagged');
+  const [tab, setTab] = useState<Tab>('people');
   const theme = useTheme();
 
   useEffect(() => {
@@ -79,6 +86,7 @@ export default function AdminScreen() {
       <View style={styles.tabs}>
         {(
           [
+            ['people', 'User reports'],
             ['flagged', 'Flagged events'],
             ['hosts', 'Hosts'],
           ] as const
@@ -101,8 +109,159 @@ export default function AdminScreen() {
           );
         })}
       </View>
-      {tab === 'flagged' ? <FlaggedTab /> : <HostsTab />}
+      {tab === 'people' ? <UserReportsTab /> : tab === 'flagged' ? <FlaggedTab /> : <HostsTab />}
     </ThemedView>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// User reports (report_user): grouped by person, "might be under 18" first
+// ---------------------------------------------------------------------------
+
+function UserReportsTab() {
+  const [groups, setGroups] = useState<AdminUserReportGroup[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setGroups(await adminListUserReports());
+      setError(null);
+    } catch (err) {
+      setError(friendlyRpcError(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function run(key: string, action: () => Promise<unknown>) {
+    setBusyKey(key);
+    try {
+      await action();
+      await load();
+    } catch (err) {
+      Alert.alert("Couldn't update", friendlyRpcError(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.list}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={async () => {
+            setRefreshing(true);
+            await load();
+            setRefreshing(false);
+          }}
+        />
+      }>
+      {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+      {groups === null && !error ? <ActivityIndicator /> : null}
+      {groups?.length === 0 ? (
+        <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
+          No open reports. 🎉
+        </ThemedText>
+      ) : null}
+      {groups?.map((group) => {
+        const key = group.reported_user_id ?? group.reports[0]?.id ?? 'unknown';
+        const busy = busyKey === key;
+        const name =
+          group.full_name || group.username || group.latest_snapshot?.username || 'Deleted account';
+        const reasons = Object.entries(group.reports_by_reason ?? {})
+          .map(([reason, n]) => `${USER_REPORT_REASON_LABEL[reason] ?? reason} ×${n}`)
+          .join(', ');
+        const userId = group.reported_user_id;
+        return (
+          <ThemedView key={key} type="backgroundElement" style={styles.card}>
+            {group.has_underage ? (
+              <ThemedText type="smallBold" style={{ color: DangerColor }}>
+                ⚠︎ Reported as possibly under 18 — review first
+              </ThemedText>
+            ) : null}
+            <Pressable
+              onPress={() => (userId ? router.push(`/user/${userId}`) : undefined)}
+              disabled={!userId}
+              accessibilityRole="button">
+              <ThemedText type="smallBold">
+                {name}
+                {group.username ? ` (@${group.username})` : ''}
+                {group.is_suspended ? ' · SUSPENDED' : ''}
+              </ThemedText>
+            </Pressable>
+            <ThemedText type="small">
+              {group.report_count} open report{group.report_count === 1 ? '' : 's'}
+              {reasons ? ` · ${reasons}` : ''}
+            </ThemedText>
+            {group.latest_snapshot?.bio ? (
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={3}>
+                Bio at report time: {group.latest_snapshot.bio}
+              </ThemedText>
+            ) : null}
+            {group.latest_snapshot?.message?.body ? (
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={4}>
+                Reported message: “{group.latest_snapshot.message.body}”
+              </ThemedText>
+            ) : null}
+            {group.reports.slice(0, 5).map((report) => (
+              <ThemedText key={report.id} type="small" themeColor="textSecondary">
+                {USER_REPORT_REASON_LABEL[report.reason] ?? report.reason} ({report.context})
+                {report.details ? `: “${report.details}”` : ''} — @
+                {report.reporter_username ?? 'deleted'}
+              </ThemedText>
+            ))}
+
+            <View style={styles.buttonRow}>
+              <AdminButton
+                label="Dismiss"
+                disabled={busy}
+                onPress={() =>
+                  confirm(
+                    'Dismiss these reports?',
+                    'They leave this list. Nothing happens to the account.',
+                    'Dismiss',
+                    () =>
+                      run(key, () =>
+                        Promise.all(
+                          group.reports.map((r) => adminResolveUserReport(r.id, 'dismissed')),
+                        ),
+                      ),
+                  )
+                }
+              />
+              {userId && !group.is_suspended ? (
+                <AdminButton
+                  label="Suspend"
+                  danger
+                  disabled={busy}
+                  onPress={() =>
+                    confirm(
+                      `Suspend ${name}?`,
+                      "They disappear for everyone and can't post, message, or connect. Their upcoming events are removed and these reports are marked handled.",
+                      'Suspend',
+                      () => run(key, () => adminSetAccountStatus(userId, 'suspended')),
+                    )
+                  }
+                />
+              ) : null}
+              {userId && group.is_suspended ? (
+                <AdminButton
+                  label="Lift suspension"
+                  disabled={busy}
+                  onPress={() => run(key, () => adminSetAccountStatus(userId, null))}
+                />
+              ) : null}
+            </View>
+          </ThemedView>
+        );
+      })}
+    </ScrollView>
   );
 }
 

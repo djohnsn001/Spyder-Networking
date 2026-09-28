@@ -13,25 +13,40 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { AccentColor, ErrorColor, Spacing } from '@/constants/theme';
+import { AccentColor, DangerColor, ErrorColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  REPORT_DETAILS_LIMIT,
-  REPORT_REASONS,
-  reportEvent,
-  type ReportReason,
-} from '@/lib/events';
 import { LEGAL } from '@/lib/legal/config';
 import { friendlyRpcError } from '@/lib/rpc';
+import {
+  confirmBlock,
+  reportUser,
+  USER_REPORT_DETAILS_LIMIT,
+  USER_REPORT_REASONS,
+  type UserReportContext,
+  type UserReportReason,
+} from '@/lib/safety';
 
-// Opened from the "⋯" menu on an event. A regular modal rather than part of
-// the detail sheet, which sizes itself to its content and shouldn't grow a
-// form. The reporter only ever hears "Thanks, we'll take a look" — never
-// whether their report hid the event.
-export default function ReportEventScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+const HEADINGS: Record<UserReportContext, string> = {
+  profile: 'Report profile',
+  message: 'Report message',
+  in_person: 'Report someone you met',
+  other: 'Report',
+};
+
+// Opened from a profile's "⋯" menu, a long-pressed chat message, or the
+// in-person match card. The server copies the profile / message at report
+// time, so later edits or deletions can't erase the evidence.
+export default function ReportUserScreen() {
+  const params = useLocalSearchParams<{
+    userId: string;
+    context?: UserReportContext;
+    contextId?: string;
+    name?: string;
+  }>();
+  const context: UserReportContext = params.context ?? 'profile';
+  const name = params.name || 'this person';
   const theme = useTheme();
-  const [reason, setReason] = useState<ReportReason | null>(null);
+  const [reason, setReason] = useState<UserReportReason | null>(null);
   const [details, setDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,13 +57,20 @@ export default function ReportEventScreen() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const result = await reportEvent(id, reason, details);
-      if (result === 'reported' || result === 'already_reported') {
+      const result = await reportUser({
+        userId: params.userId,
+        context,
+        contextId: params.contextId,
+        reason,
+        details,
+      });
+      if (result === 'reported') {
         setDone(true);
       } else if (result === 'rate_limited') {
         setError("You've sent a lot of reports today. Try again tomorrow.");
       } else {
-        setError("This event can't be reported right now.");
+        // not_found / not_allowed / invalid: never say more than this.
+        setError("This can't be reported right now.");
       }
     } catch (err) {
       setError(friendlyRpcError(err));
@@ -60,15 +82,31 @@ export default function ReportEventScreen() {
   if (done) {
     return (
       <ThemedView style={styles.centered}>
-        <ThemedText type="subtitle" style={styles.centerText}>
-          Thanks, we&apos;ll review this {LEGAL.REPORT_REVIEW_PROMISE}.
+        <ThemedText type="subtitle" style={styles.centerText} accessibilityRole="header">
+          Thanks for telling us.
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
-          Reports are private. The host isn't told who reported their event.
+          We&apos;ll review this {LEGAL.REPORT_REVIEW_PROMISE}. Reports are private: {name} isn&apos;t
+          told who reported them.
         </ThemedText>
+        {context === 'in_person' ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            If you&apos;re in danger, call 911.
+          </ThemedText>
+        ) : null}
+        <Pressable
+          onPress={() => confirmBlock(name, params.userId)}
+          accessibilityRole="button"
+          accessibilityLabel={`Block ${name} too`}
+          style={({ pressed }) => [styles.button, styles.blockButton, pressed && styles.pressed]}>
+          <ThemedText type="smallBold" style={styles.buttonLabel}>
+            Block {name} too
+          </ThemedText>
+        </Pressable>
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
+          accessibilityLabel="Done"
           style={({ pressed }) => [styles.button, styles.doneButton, pressed && styles.pressed]}>
           <ThemedText type="smallBold" style={styles.buttonLabel}>
             Done
@@ -86,19 +124,23 @@ export default function ReportEventScreen() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
           <View style={styles.header}>
-            <ThemedText type="subtitle" style={styles.heading}>
-              Report event
+            <ThemedText type="subtitle" style={styles.heading} accessibilityRole="header">
+              {HEADINGS[context]}
             </ThemedText>
-            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel">
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={Spacing.two}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel">
               <ThemedText type="smallBold" themeColor="textSecondary">
                 Cancel
               </ThemedText>
             </Pressable>
           </View>
 
-          <ThemedText type="smallBold">What's wrong with it?</ThemedText>
-          <View style={styles.reasons}>
-            {REPORT_REASONS.map((option) => {
+          <ThemedText type="smallBold">What&apos;s going on?</ThemedText>
+          <View style={styles.reasons} accessibilityRole="radiogroup">
+            {USER_REPORT_REASONS.map((option) => {
               const selected = reason === option.value;
               return (
                 <Pressable
@@ -126,12 +168,12 @@ export default function ReportEventScreen() {
             <View style={styles.fieldHeaderRow}>
               <ThemedText type="smallBold">Details (optional)</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {details.length}/{REPORT_DETAILS_LIMIT}
+                {details.length}/{USER_REPORT_DETAILS_LIMIT}
               </ThemedText>
             </View>
             <TextInput
               value={details}
-              onChangeText={(text) => setDetails(text.slice(0, REPORT_DETAILS_LIMIT))}
+              onChangeText={(text) => setDetails(text.slice(0, USER_REPORT_DETAILS_LIMIT))}
               placeholder="Anything that helps us understand"
               placeholderTextColor={theme.textSecondary}
               multiline
@@ -142,7 +184,7 @@ export default function ReportEventScreen() {
           </View>
 
           {error ? (
-            <ThemedText type="small" style={styles.errorText}>
+            <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
               {error}
             </ThemedText>
           ) : null}
@@ -152,6 +194,7 @@ export default function ReportEventScreen() {
             disabled={!reason || isSubmitting}
             accessibilityRole="button"
             accessibilityLabel="Send report"
+            accessibilityState={{ disabled: !reason || isSubmitting, busy: isSubmitting }}
             style={({ pressed }) => [
               styles.button,
               { opacity: !reason || isSubmitting ? 0.5 : 1 },
@@ -198,11 +241,14 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 26,
     lineHeight: 34,
+    flexShrink: 1,
   },
   reasons: {
     gap: Spacing.two,
   },
   reason: {
+    minHeight: 48,
+    justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three,
@@ -228,10 +274,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
+    minHeight: 48,
+    justifyContent: 'center',
     paddingVertical: Spacing.three,
     borderRadius: Spacing.four,
     alignItems: 'center',
     backgroundColor: AccentColor,
+  },
+  blockButton: {
+    alignSelf: 'stretch',
+    backgroundColor: DangerColor,
   },
   doneButton: {
     alignSelf: 'stretch',

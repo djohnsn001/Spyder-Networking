@@ -11,10 +11,10 @@ import { UnreadMessagesProvider } from '@/lib/unread-messages';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { session, profile, needsConsent, isLoading } = useAuth();
+  const { session, profile, needsConsent, isSuspended, isLoading } = useAuth();
   const hasUsername = !!profile?.username;
-  // Past the consent gate (Terms + 18+) and profile setup.
-  const isReady = !needsConsent && hasUsername;
+  // Not suspended, past the consent gate (Terms + 18+), and past profile setup.
+  const isReady = !isSuspended && !needsConsent && hasUsername;
   const pathname = usePathname();
 
   // A bolas://connect/<code> link that arrived while signed out (or before
@@ -37,7 +37,11 @@ function RootNavigator() {
       <Stack.Protected guard={!!session}>
         {/* The consent gate comes first: accounts that haven't accepted the
             current Terms see only this (plus Delete account). */}
-        <Stack.Protected guard={needsConsent}>
+        <Stack.Protected guard={isSuspended}>
+          <Stack.Screen name="suspended" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={!isSuspended && needsConsent}>
           <Stack.Screen name="legal/accept" />
         </Stack.Protected>
 
@@ -65,6 +69,11 @@ function RootNavigator() {
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />
+          <Stack.Screen name="report/[userId]" options={{ presentation: 'modal' }} />
+          <Stack.Screen
+            name="blocked-users"
+            options={{ headerShown: true, headerTitle: 'Blocked users' }}
+          />
           <Stack.Screen
             name="legal/licenses"
             options={{ headerShown: true, headerTitle: 'Open-source licenses' }}
@@ -76,7 +85,7 @@ function RootNavigator() {
           />
         </Stack.Protected>
 
-        <Stack.Protected guard={!needsConsent && !hasUsername}>
+        <Stack.Protected guard={!isSuspended && !needsConsent && !hasUsername}>
           <Stack.Screen name="profile-setup" />
         </Stack.Protected>
 
