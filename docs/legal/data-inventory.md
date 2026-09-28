@@ -7,8 +7,9 @@ Privacy label, and Google Play's Data Safety form must all match this file, and 
 the code. When the code changes what it collects, stores, shows, or keeps, update this file in the
 same commit.
 
-- **Checked against:** branch `feature/legal-compliance` at `bfdbb03` (migrations through
-  `20260927070000_event_reports.sql`), 2026-09-28.
+- **Checked against:** branch `feature/legal-compliance`, migrations through
+  `20260928000000_data_retention.sql` (Phase 1b), 2026-09-28. Sections describe the state **after**
+  that migration is pushed.
 - **Scope:** the mobile app (iOS and Android) and the shared Supabase project. The partner's website
   only writes to `waitlist` (see section I).
 - "Signed-in users" means anyone with a Bolas account. Today every signed-in user can read every
@@ -33,7 +34,7 @@ same commit.
 | Business stage | profile (optional: idea / building / launched) | `profiles.business_stage` | discovery | all signed-in users | until account deletion | Supabase |
 | City (typed by the user) | profile (optional, free text, e.g. "Boise, ID") | `profiles.city` | shown on profile; fallback for "met in" city | all signed-in users | until account deletion | Supabase |
 | Notifications setting | Settings toggle | `profiles.notifications_enabled` | nothing yet: no notifications exist (flag M6) | all signed-in users (flag M1) | until account deletion | Supabase |
-| Map sharing setting | Settings toggle ("Show me on the map") | `profiles.location_sharing` (`connections` / `off`, **defaults to `connections`**) | controls the Web Map | all signed-in users (flag M1) | until account deletion | Supabase |
+| Map sharing setting | Settings toggle ("Show me on the map") | `profiles.location_sharing` (`connections` / `off`; **defaults to `off`** since migration `20260928000000`; accounts created earlier kept their setting, usually `connections`) | controls the Web Map | all signed-in users (flag M1) | until account deletion | Supabase |
 | Profile created/updated times | automatic | `profiles.created_at`, `profiles.updated_at` | housekeeping | all signed-in users (flag M1) | until account deletion | Supabase |
 | Admin flag | added by hand in the SQL editor | `app_admins` | moderation tools | nobody (RPC `is_admin()` answers only for yourself) | until removed or account deletion | Supabase |
 
@@ -43,17 +44,17 @@ same commit.
 |---|---|---|---|---|---|---|
 | Connection (who, status pending/accepted, level acquaintance/in_person, method request/qr/bump/legacy, created_at) | connection requests; QR scan; phone tap | `connections` | the core network | the two people in it. Others learn **that** you're connected through: mutuals (`get_mutuals`), your connection count (`get_connection_count`), map lines between two of their in-person connections (`get_connection_edges`), and event attendee lists | until either person removes it or either account is deleted | Supabase |
 | Where/when you met (`met_city`, `met_at`) | in-person connect; city comes from the phone's reverse-geocode, else either person's profile city | `connections` | "Met in Boise, Sep 2026" | the two people in it | as long as the connection | Supabase (the phone asked Apple/Google for the city name; see G) |
-| Undo snapshot | in-person connect | `connections.undo_until`, `undo_snapshot` | 30-second undo | the two people | stays on the row (not cleared after the window) | Supabase |
-| QR code token + result | "My code" screen | `connect_tokens` (token, owner, who scanned, result incl. both people's username/full name/avatar URL) | one-time 60 s QR codes | nobody directly (owner reads status through an RPC) | swept after 1 hour, **but only when someone next creates a QR code** (flag M2) | Supabase |
-| Phone-tap ("bump") event | accelerometer on device detects the tap; phone sends **precise GPS lat/lng**, GPS accuracy, city name | `bump_events` | matching two phones that tapped together | nobody (server only) | coordinates erased when the bump stops waiting (matched / ambiguous / no_match on poll); rows deleted after 10 minutes, **but both only happen lazily** (flag M2) | Supabase |
+| Undo snapshot | in-person connect | `connections.undo_until`, `undo_snapshot` | 30-second undo | the two people | cleared ~1 minute after the undo window ends (cleanup job) | Supabase |
+| QR code token + result | "My code" screen | `connect_tokens` (token, owner, who scanned, result incl. both people's username/full name/avatar URL) | one-time 60 s QR codes | nobody directly (owner reads status through an RPC) | deleted after 1 hour (cleanup job runs every minute) | Supabase |
+| Phone-tap ("bump") event | accelerometer on device detects the tap; phone sends **precise GPS lat/lng**, GPS accuracy, city name | `bump_events` | matching two phones that tapped together | nobody (server only) | coordinates erased as soon as the tap stops waiting (matched / ambiguous / no match), and within ~1 minute if the app never checks back; rows deleted after 10 minutes (cleanup job runs every minute) | Supabase |
 
 ## C. Location
 
 | Data | Source | Where stored | Why we need it | Who can see it | How long we keep it | Sent to |
 |---|---|---|---|---|---|---|
-| **Web Map position** (rounded to 2 decimals ≈ 1.1 km × 0.8 km cell around Boise) | device GPS, **every time the Map tab opens** and location permission is granted | `user_locations` (one row per user, overwritten) | Web Map pins | your **in-person** connections, only while your sharing is `connections` | **indefinitely**: never expires, and written **even when sharing is `off`** (flag M5) | Supabase |
+| **Web Map position** (snapped server-side to a 0.02° × 0.03° grid ≈ 2.2 km × 2.4 km ≈ 5 km² around Boise) | device GPS, each time the Map tab opens, **only while sharing is on** | `user_locations` (one row per user, overwritten) | Web Map pins | your **in-person** connections, only while your sharing is `connections` | deleted immediately when sharing is turned off; deleted after **7 days** without an update; the server refuses to store one while sharing is off | Supabase |
 | Bump coordinates | see B | `bump_events` | see B | nobody | see B | Supabase |
-| Event exact spot + place name | host picks it on the map | `event_locations` | so attendees can find the event | host, people who tapped Going, admins | as long as the event (flag M7) | Supabase |
+| Event exact spot + place name | host picks it on the map | `event_locations` | so attendees can find the event | host, people who tapped Going, admins | as long as the event (30 days after it ends) | Supabase |
 | Event approximate spot (moved 150–350 m at random) | server, at create time | `events.approx_latitude/longitude` | map circle | anyone who can see the event | as long as the event | Supabase |
 | "Met in" city | see B | `connections.met_city` | see B | the two people | as long as the connection | Supabase |
 | Your blue dot on the map | device GPS | **on the phone only** (`showsUserLocation`) | "you are here" | only you | not stored | Apple Maps (iOS) / Google Maps SDK (Android) draw it on the device |
@@ -62,10 +63,10 @@ same commit.
 
 | Data | Source | Where stored | Why we need it | Who can see it | How long we keep it | Sent to |
 |---|---|---|---|---|---|---|
-| Event (title, description, start/end, visibility public/connections, status, going count) | host | `events` | map events | public events: all signed-in users; connections-only: host + their connections; hidden/removed: host + admins | **forever** until the host deletes it or the host's account is deleted (flag M7) | Supabase |
+| Event (title, description, start/end, visibility public/connections, status, going count) | host | `events` | map events | public events: all signed-in users; connections-only: host + their connections; hidden/removed: host + admins | deleted **30 days after it ends** (with its exact spot and RSVPs), or earlier by the host / account deletion. Events with any report are kept until Phase 4 (flag M10) | Supabase |
 | RSVP ("Going") | tap Going | `event_attendees` | attendance, unlocks exact spot | you, the host, admins, and your own connections | until you un-RSVP, the event is deleted, or account deletion | Supabase |
-| RSVP log | automatic | `event_rsvp_log` | 30-RSVPs-per-day limit | nobody | pruned to 7 days (lazily, on your next RSVP) | Supabase |
-| Event creation log | automatic | `event_creation_log` | 5-creates-per-day limit | nobody | **until account deletion** (only the last 24 h is ever used; flag M8) | Supabase |
+| RSVP log | automatic | `event_rsvp_log` | 30-RSVPs-per-day limit | nobody | deleted after 7 days (cleanup job) | Supabase |
+| Event creation log | automatic | `event_creation_log` | 5-creates-per-day limit | nobody | deleted after 7 days (cleanup job) | Supabase |
 | Host permission (approved / suspended + admin note) | admins | `host_permissions` | hosting trust override | the user themselves, admins | until an admin clears it or account deletion | Supabase |
 
 ## E. Messages

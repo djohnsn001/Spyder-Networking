@@ -23,8 +23,8 @@ only become true once that phase ships. Resubmit the forms whenever a phase chan
 - **Shared** (Google): given to a third party. Sending data to a **service provider** that processes
   it for us (Supabase) is **not** sharing.
 - **Precise vs approximate location:** Apple uses **3+ decimal places** as the line for precise.
-  Google uses an **area under 3 km²** as the line for precise. The Web Map's 2-decimal rounding
-  (~0.9 km² cell) is **Coarse for Apple but Precise for Google**.
+  Google uses an **area under 3 km²** as the line for precise. Since Phase 1b the Web Map is snapped to a
+  ~5 km² grid, so it's **approximate/coarse for both** stores.
 
 ---
 
@@ -45,7 +45,7 @@ covers moderation and rate limits).
 | User Content → Customer Support | No, see A5 | support is by email, outside the app |
 | User Content → Audio / Gameplay | No | |
 | Location → **Precise Location** | Yes | phone-tap GPS (kept up to ~10 min); event pins, see A2 |
-| Location → **Coarse Location** | Yes | Web Map position (2 decimals, kept); "met in" city |
+| Location → **Coarse Location** | Yes | Web Map position (~5 km² grid, deleted after 7 days idle or when sharing is off); "met in" city |
 | Identifiers → **User ID** | Yes | account UUID, username |
 | Identifiers → Device ID | No | no advertising ID or device ID is read (MapKit is part of iOS) |
 | **Contacts** | Yes (A3) | connections list (social graph) |
@@ -99,8 +99,8 @@ Global answers:
 
 | Google category → type | Collected | Shared | Optional? | Purposes | Notes |
 |---|---|---|---|---|---|
-| Location → **Precise location** | Yes | No | **Optional** (the app works without location permission) | App functionality | phone taps (raw GPS); Web Map cell (~0.9 km² < 3 km², so precise under Google's rule); event pins |
-| Location → **Approximate location** | Yes | No | Optional | App functionality | "met in" city; typed profile city |
+| Location → **Precise location** | Yes | No | **Optional** (the app works without location permission) | App functionality | phone taps (raw GPS); event pins |
+| Location → **Approximate location** | Yes | No | Optional | App functionality | Web Map position (~5 km² grid); "met in" city; typed profile city |
 | Personal info → **Name** | Yes | No | Optional | App functionality | |
 | Personal info → **Email address** | Yes | No | **Required** | App functionality, Account management | |
 | Personal info → **User IDs** | Yes | No | Required | App functionality, Account management | UUID + username |
@@ -131,8 +131,8 @@ Global answers:
 - **G3: IP address.** Not a Google data type on its own. Google's guidance is to declare approximate
   location only if you **derive** location from the IP. Bolas doesn't, so **no extra row**.
   Approximate location is declared anyway.
-- **G4: Web Map precision.** If flag M5(d) is accepted (round to a ≥3 km² cell), the Web Map moves
-  to "Approximate." Precise location stays declared because of phone taps.
+- **G4: Web Map precision.** Resolved in Phase 1b: the ~5 km² grid is over Google's 3 km² line, so
+  the Web Map counts as approximate. Precise location stays declared because of phone taps.
 
 ---
 

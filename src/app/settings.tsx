@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
 import { getIsAdmin } from '@/lib/events';
+import { setLocationSharing } from '@/lib/map';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
 
@@ -56,11 +57,7 @@ export default function SettingsScreen() {
     if (!session) return;
     setIsUpdatingLocationSharing(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ location_sharing: value ? 'connections' : 'off' })
-        .eq('id', session.user.id);
-      if (error) throw error;
+      await setLocationSharing(session.user.id, value);
       await refreshProfile();
     } catch (error) {
       console.error('Failed to update location sharing preference', error);
@@ -167,7 +164,7 @@ export default function SettingsScreen() {
                 </ThemedText>
               </View>
               <Switch
-                value={(profile?.location_sharing ?? 'connections') === 'connections'}
+                value={profile?.location_sharing === 'connections'}
                 onValueChange={handleToggleLocationSharing}
                 disabled={isUpdatingLocationSharing}
                 trackColor={{ true: AccentColor }}

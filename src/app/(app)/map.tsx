@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,6 +34,7 @@ import {
   GROUP_MARKER_SIZE,
   regionToClusterDistance,
   resolveBubbleOverlaps,
+  setLocationSharing,
   updateMyLocation,
   type LocationCluster,
 } from '@/lib/map';
@@ -138,9 +140,19 @@ function GroupMarker({
 type PermissionState = 'checking' | 'granted' | 'denied';
 type WebState = 'idle' | 'loading' | 'loaded' | 'error';
 
+// Remembers "Not now" on the you're-hidden banner, per account, on this phone.
+function hiddenBannerKey(userId: string) {
+  return `bolas.map-hidden-banner-dismissed.${userId}`;
+}
+
 export default function MapScreen() {
-  const { session } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const myId = session?.user.id;
+  // "Show me on the map" (Settings). Off is the default for new accounts.
+  const isSharing = profile?.location_sharing === 'connections';
+  // null until AsyncStorage answers, so the banner doesn't flash.
+  const [hiddenBannerDismissed, setHiddenBannerDismissed] = useState<boolean | null>(null);
+  const [isEnablingSharing, setIsEnablingSharing] = useState(false);
 
   const [permissionState, setPermissionState] = useState<PermissionState>('checking');
   const [myPosition, setMyPosition] = useState<{ latitude: number; longitude: number } | null>(
@@ -283,10 +295,14 @@ export default function MapScreen() {
           longitude: position.coords.longitude,
         });
 
-        try {
-          await updateMyLocation(position.coords.latitude, position.coords.longitude);
-        } catch (error) {
-          console.error('Failed to save location', error);
+        // Hidden users' positions never leave the phone (the server would
+        // refuse to keep them anyway). Turning sharing on re-runs this.
+        if (isSharing) {
+          try {
+            await updateMyLocation(position.coords.latitude, position.coords.longitude);
+          } catch (error) {
+            console.error('Failed to save location', error);
+          }
         }
 
         if (cancelled) return;
@@ -296,8 +312,36 @@ export default function MapScreen() {
       return () => {
         cancelled = true;
       };
-    }, [loadWeb]),
+    }, [loadWeb, isSharing]),
   );
+
+  useEffect(() => {
+    if (!myId) return;
+    AsyncStorage.getItem(hiddenBannerKey(myId))
+      .then((stored) => setHiddenBannerDismissed(stored === 'true'))
+      .catch(() => setHiddenBannerDismissed(false));
+  }, [myId]);
+
+  const dismissHiddenBanner = useCallback(() => {
+    setHiddenBannerDismissed(true);
+    if (!myId) return;
+    AsyncStorage.setItem(hiddenBannerKey(myId), 'true').catch((error) => {
+      if (__DEV__) console.warn('Failed to save banner dismissal', error);
+    });
+  }, [myId]);
+
+  const turnOnSharing = useCallback(async () => {
+    if (!myId) return;
+    setIsEnablingSharing(true);
+    try {
+      await setLocationSharing(myId, true);
+      await refreshProfile();
+    } catch (error) {
+      if (__DEV__) console.warn('Failed to turn on location sharing', error);
+    } finally {
+      setIsEnablingSharing(false);
+    }
+  }, [myId, refreshProfile]);
 
   // The map already shows me via showsUserLocation, so don't double it up
   // with a marker from my own row in get_connection_locations().
@@ -305,6 +349,14 @@ export default function MapScreen() {
     () => connections.filter((c) => c.id !== myId),
     [connections, myId],
   );
+
+  // One bottom banner at a time: loading/error win, then this one, then the
+  // "your map grows" nudge.
+  const showHiddenBanner =
+    !isSharing &&
+    hiddenBannerDismissed === false &&
+    webState !== 'loading' &&
+    webState !== 'error';
 
   const clusterDistance = useMemo(() => regionToClusterDistance(longitudeDelta), [longitudeDelta]);
 
@@ -542,7 +594,40 @@ export default function MapScreen() {
         </ThemedView>
       ) : null}
 
-      {webState === 'loaded' && otherConnections.length === 0 ? (
+      {showHiddenBanner ? (
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            {"You're hidden on the map. Turn on to let people you've met in person see your approximate area."}
+          </ThemedText>
+          <Pressable
+            onPress={() => void turnOnSharing()}
+            disabled={isEnablingSharing}
+            hitSlop={Spacing.two}
+            accessibilityRole="button"
+            accessibilityLabel="Turn on showing me on the map"
+            accessibilityState={{ disabled: isEnablingSharing }}>
+            {isEnablingSharing ? (
+              <ActivityIndicator color={theme.accentText} />
+            ) : (
+              <ThemedText type="smallBold" themeColor="accentText">
+                Turn on
+              </ThemedText>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={dismissHiddenBanner}
+            hitSlop={Spacing.two}
+            accessibilityRole="button"
+            accessibilityLabel="Not now"
+            accessibilityHint="You can turn this on later in Settings">
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Not now
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : null}
+
+      {webState === 'loaded' && otherConnections.length === 0 && !showHiddenBanner ? (
         <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
           <ThemedText type="small" themeColor="textSecondary">
             Your map grows when you meet people.
