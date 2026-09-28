@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
+import { getIsAdmin } from '@/lib/events';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
 
@@ -24,6 +25,15 @@ export default function SettingsScreen() {
   const { preference, setPreference } = useThemePreference();
   const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
   const [isUpdatingLocationSharing, setIsUpdatingLocationSharing] = useState(false);
+  // Only the team (app_admins) sees the Admin row. The admin screen and every
+  // admin RPC check again on their own.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    getIsAdmin()
+      .then(setIsAdmin)
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   async function handleToggleNotifications(value: boolean) {
     if (!session) return;
@@ -77,6 +87,18 @@ export default function SettingsScreen() {
                 ›
               </ThemedText>
             </Pressable>
+            {isAdmin ? (
+              <Pressable
+                onPress={() => router.push('/admin')}
+                accessibilityRole="button"
+                accessibilityLabel="Admin"
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+                <ThemedText type="default">Admin</ThemedText>
+                <ThemedText type="default" themeColor="textSecondary">
+                  ›
+                </ThemedText>
+              </Pressable>
+            ) : null}
           </ThemedView>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>

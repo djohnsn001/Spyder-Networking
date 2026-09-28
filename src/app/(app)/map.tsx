@@ -15,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Avatar } from '@/components/avatar';
 import { ClusterListModal } from '@/components/cluster-list-modal';
-import { DraftEventMarker, EventMarker } from '@/components/event-marker';
+import { DraftEventMarker, EventMarker, eventMarkerKey } from '@/components/event-marker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -442,7 +442,7 @@ export default function MapScreen() {
         {/* Drawn after the people markers so events sit on top. */}
         {events.map((event) => (
           <EventMarker
-            key={`${event.id}-${event.starts_at}`}
+            key={eventMarkerKey(event)}
             event={event}
             onPress={() => router.push(`/event/${event.id}`)}
           />

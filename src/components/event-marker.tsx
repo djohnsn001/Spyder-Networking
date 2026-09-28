@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Circle, Marker } from 'react-native-maps';
 
 import { AccentColor } from '@/constants/theme';
-import { hasExactLocation } from '@/lib/events';
+import { EVENT_CIRCLE_RADIUS_M, hasExactLocation } from '@/lib/events';
 import type { EventSummary } from '@/lib/types';
 
 const TILE_WIDTH = 42;
 const CREAM = '#fdfbf7';
 const INK = '#2a211c';
+// AccentColor (#83655d) at low opacity: a soft "somewhere in here" area.
+const CIRCLE_FILL = 'rgba(131, 101, 93, 0.16)';
+const CIRCLE_STROKE = 'rgba(131, 101, 93, 0.55)';
 
 // Custom marker views are re-rendered into a bitmap on every frame while
 // tracksViewChanges is on (noticeably costly on Android with many pins).
 // These tiles never change after first paint, so turn tracking off once
 // they've had a moment to render. The map keys each marker by id +
-// starts_at, so an edited event remounts and gets re-tracked.
+// starts_at + status + exact/approx (eventMarkerKey), so an edited event,
+// or one whose look changes, remounts and gets re-tracked.
 function useStopTrackingAfterFirstPaint() {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   useEffect(() => {
@@ -24,37 +28,78 @@ function useStopTrackingAfterFirstPaint() {
   return tracksViewChanges;
 }
 
-// A calendar tile with a pointer tail: square-ish (people are circles),
-// anchored at the tail's tip (people float centered over an area), and
-// showing the date so you can scan the map for "what's this week".
+export function eventMarkerKey(event: EventSummary) {
+  return `${event.id}-${event.starts_at}-${event.status}-${hasExactLocation(event) ? 'exact' : 'approx'}`;
+}
+
+// The calendar tile: square-ish (people are circles) and showing the date,
+// so you can scan the map for "what's this week".
+function CalendarTile({ startsAt }: { startsAt: string }) {
+  const start = new Date(startsAt);
+  const month = start.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
+  return (
+    <View style={styles.tile}>
+      <View style={styles.tileHeader}>
+        <Text style={styles.monthText}>{month}</Text>
+      </View>
+      <Text style={styles.dayText}>{start.getDate()}</Text>
+    </View>
+  );
+}
+
+// Two looks, depending on what the viewer is allowed to know:
+// - Exact (you're the host, going, or an admin): the tile with a pointer
+//   tail, anchored at the tail's tip on the real spot.
+// - Approximate (everyone else): a 400 m circle around the fuzzed point with
+//   the tile centered in it and no tail, so it doesn't read as a pin. The
+//   real spot is always somewhere inside the circle.
+// Hosts also see their own hidden/removed events, faded, so they can tap
+// through to see why.
 export function EventMarker({ event, onPress }: { event: EventSummary; onPress: () => void }) {
   const tracksViewChanges = useStopTrackingAfterFirstPaint();
-  const start = new Date(event.starts_at);
-  const month = start.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
-  const day = start.getDate();
+  const faded = event.status !== 'active';
+  const label = `Event: ${event.title}`;
 
-  return (
-    <Marker
-      coordinate={
-        hasExactLocation(event)
-          ? { latitude: event.exact_latitude, longitude: event.exact_longitude }
-          : { latitude: event.approx_latitude, longitude: event.approx_longitude }
-      }
-      anchor={{ x: 0.5, y: 1 }}
-      zIndex={10}
-      tracksViewChanges={tracksViewChanges}
-      onPress={onPress}
-      accessibilityLabel={`Event: ${event.title}`}>
-      <View style={styles.wrapper}>
-        <View style={styles.tile}>
-          <View style={styles.tileHeader}>
-            <Text style={styles.monthText}>{month}</Text>
-          </View>
-          <Text style={styles.dayText}>{day}</Text>
+  if (hasExactLocation(event)) {
+    return (
+      <Marker
+        coordinate={{ latitude: event.exact_latitude, longitude: event.exact_longitude }}
+        anchor={{ x: 0.5, y: 1 }}
+        zIndex={10}
+        tracksViewChanges={tracksViewChanges}
+        onPress={onPress}
+        accessibilityLabel={label}>
+        <View style={[styles.wrapper, faded && styles.faded]}>
+          <CalendarTile startsAt={event.starts_at} />
+          <View style={styles.tail} />
         </View>
-        <View style={styles.tail} />
-      </View>
-    </Marker>
+      </Marker>
+    );
+  }
+
+  const center = { latitude: event.approx_latitude, longitude: event.approx_longitude };
+  return (
+    <>
+      <Circle
+        center={center}
+        radius={EVENT_CIRCLE_RADIUS_M}
+        fillColor={CIRCLE_FILL}
+        strokeColor={CIRCLE_STROKE}
+        strokeWidth={1}
+        zIndex={5}
+      />
+      <Marker
+        coordinate={center}
+        anchor={{ x: 0.5, y: 0.5 }}
+        zIndex={10}
+        tracksViewChanges={tracksViewChanges}
+        onPress={onPress}
+        accessibilityLabel={`${label}, approximate area`}>
+        <View style={[styles.wrapper, faded && styles.faded]}>
+          <CalendarTile startsAt={event.starts_at} />
+        </View>
+      </Marker>
+    </>
   );
 }
 
@@ -82,6 +127,9 @@ export function DraftEventMarker({ coordinate }: { coordinate: { latitude: numbe
 const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',
+  },
+  faded: {
+    opacity: 0.5,
   },
   tile: {
     width: TILE_WIDTH,
