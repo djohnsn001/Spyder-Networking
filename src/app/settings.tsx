@@ -193,6 +193,18 @@ export default function SettingsScreen() {
                 Log out
               </ThemedText>
             </Pressable>
+            <Pressable
+              onPress={() => router.push('/delete-account')}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+              <ThemedText type="default" style={styles.logoutLabel}>
+                Delete account
+              </ThemedText>
+              <ThemedText type="default" themeColor="textSecondary">
+                ›
+              </ThemedText>
+            </Pressable>
           </ThemedView>
         </ScrollView>
       </SafeAreaView>

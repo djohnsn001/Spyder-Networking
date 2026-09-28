@@ -14,6 +14,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { takeAuthNotice } from '@/lib/account';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
@@ -23,7 +24,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(params.info ?? null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(
+    () => params.info ?? takeAuthNotice(),
+  );
 
   async function handleSubmit() {
     setErrorMessage(null);

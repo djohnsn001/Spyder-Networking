@@ -8,8 +8,8 @@
 --   npx supabase db query --linked -f supabase/tests/legal_compliance.sql
 --
 -- Sections: A = consent, L = map location defaults, R = retention sweep,
--- B = blocking, C = reports + admin + suspension, E = content filter.
--- (Phase 4 adds D = deletion cascade.)
+-- B = blocking, C = reports + admin + suspension, E = content filter,
+-- D = deletion cascade (+ avatar listing).
 
 do $tests$
 declare
@@ -40,6 +40,15 @@ declare
   eT uuid;                        -- upcoming event hosted by rT
   rep uuid;
   x uuid;
+  -- Deletion
+  dX uuid := gen_random_uuid();   -- the account being deleted
+  dY uuid := gen_random_uuid();   -- in-person connection, chat partner
+  dZ uuid := gen_random_uuid();   -- sent dX a pending request; dX blocked them
+  dW uuid := gen_random_uuid();   -- blocked dX
+  eX uuid;                        -- hosted by dX, dY going
+  eY uuid;                        -- hosted by dY, dX going
+  eY2 uuid;                       -- hosted by dY, reported by dX
+  tbl text;
   v2 jsonb;
   succ int;
   i int;
@@ -57,6 +66,7 @@ declare
   e_old uuid;
   e_recent uuid;
   e_reported uuid;
+  e_resolved uuid;
   c_past uuid;
   c_future uuid;
 begin
@@ -274,7 +284,13 @@ begin
   values (u3, 'LC reported', 43.6, -116.2, now() - interval '31 days 2 hours', now() - interval '31 days', 'public')
   returning id into e_reported;
   insert into public.event_reports (event_id, reporter_id, reason, status)
-  values (e_reported, u1, 'spam', 'dismissed');
+  values (e_reported, u1, 'spam', 'open');
+  -- Ended 31 days ago with only a resolved report: deleted, report survives.
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, ends_at, visibility)
+  values (u3, 'LC resolved', 43.6, -116.2, now() - interval '31 days 2 hours', now() - interval '31 days', 'public')
+  returning id into e_resolved;
+  insert into public.event_reports (event_id, reporter_id, reason, status)
+  values (e_resolved, u2, 'spam', 'dismissed');
 
   -- Creation log: 8 days old and fresh.
   insert into public.event_creation_log (creator_id, created_at) values
@@ -321,11 +337,15 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  R4 event ended 31 days ago deleted (with exact location)';
   if not ok then fails := fails + 1; end if;
 
-  -- R5: an event over for 29 days, and a reported old one, are both kept.
+  -- R5: an event over for 29 days, and an old one with an OPEN report, are
+  -- kept. An old one whose report was resolved is deleted, and the report
+  -- survives (event_id null).
   ok := exists (select 1 from public.events where id = e_recent)
         and exists (select 1 from public.events where id = e_reported)
-        and exists (select 1 from public.event_reports where event_id = e_reported);
-  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  R5 29-day-old and reported events kept';
+        and exists (select 1 from public.event_reports where event_id = e_reported)
+        and not exists (select 1 from public.events where id = e_resolved)
+        and exists (select 1 from public.event_reports where reporter_id = u2 and event_id is null and status = 'dismissed');
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  R5 29-day-old + open-report events kept; resolved-report event deleted, report kept';
   if not ok then fails := fails + 1; end if;
 
   -- R6: creation log rows older than 7 days are deleted.
@@ -785,6 +805,129 @@ begin
   reset role;
   ok := err is null and (select city from public.profiles where id = rR) = 'Boise, ID';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E6 unchanged old bio with a new term doesn''t block other edits';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- D. Deletion cascade
+  -- =====================================================================
+
+  insert into auth.users (id, email, aud, role, created_at, raw_user_meta_data)
+  select id, id || '@test.bolas.invalid', 'authenticated', 'authenticated', now() - interval '30 days',
+         jsonb_build_object('terms_version', v_current, 'age_confirmed', true)
+  from unnest(array[dX, dY, dZ, dW]) as id;
+  update public.profiles
+  set username = 'lc_' || left(replace(id::text, '-', ''), 12), location_sharing = 'connections'
+  where id in (dX, dY, dZ, dW);
+
+  -- Connections: in person with dY, acquaintance dY-dZ (for dY's count),
+  -- a pending request from dZ.
+  perform public._connect_in_person(dX, dY, 'bump', 'Boise');
+  insert into public.connections (requester_id, addressee_id, status) values
+    (dY, dZ, 'accepted'), (dZ, dX, 'pending');
+  -- Blocks both ways.
+  insert into public.user_blocks (blocker_id, blocked_id) values (dX, dZ), (dW, dX);
+  -- Events and RSVPs both ways; dX reports one of dY's events.
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (dX, 'LC dX event', 43.6, -116.2, now() + interval '1 day', 'public') returning id into eX;
+  insert into public.event_locations (event_id, latitude, longitude) values (eX, 43.6, -116.2);
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (dY, 'LC dY event', 43.6, -116.2, now() + interval '1 day', 'public') returning id into eY;
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (dY, 'LC dY event 2', 43.6, -116.2, now() + interval '1 day', 'public') returning id into eY2;
+  insert into public.event_attendees (event_id, user_id) values (eX, dY), (eY, dX);
+  insert into public.event_creation_log (creator_id, event_id) values (dX, eX);
+  insert into public.event_reports (event_id, reporter_id, reason) values (eY2, dX, 'spam');
+  -- A chat.
+  perform set_config('request.jwt.claims', json_build_object('sub', dX, 'role', 'authenticated')::text, true);
+  conv := public.get_or_create_direct_conversation(dY);
+  insert into public.messages (conversation_id, sender_id, body) values (conv, dX, 'hi'), (conv, dY, 'hey');
+  -- Reports filed and received.
+  insert into public.user_reports (reporter_id, reported_user_id, context, reason) values
+    (dX, dY, 'profile', 'spam'), (dZ, dX, 'profile', 'harassment');
+  -- Location, tap, QR code, hosting, suspension, admin, moderation log.
+  insert into public.user_locations (user_id, lat, lng) values (dX, 43.6, -116.2);
+  insert into public.bump_events (user_id, lat, lng, accuracy_m) values (dX, 43.6, -116.2, 10);
+  insert into public.connect_tokens (token, user_id, expires_at) values ('lc_d_' || dX, dX, now() + interval '1 minute');
+  insert into public.host_permissions (user_id, status, updated_by) values (dX, 'approved', dY);
+  insert into public.account_restrictions (user_id, status, created_by) values (dW, 'suspended', dX);
+  insert into public.app_admins (user_id) values (dX);
+  insert into public.moderation_log (admin_id, action, user_id) values (dX, 'test', dY);
+
+  delete from auth.users where id = dX;
+
+  -- D1: nothing anywhere still points at dX.
+  n := 0;
+  for tbl in
+    select format('select count(*) from %I.%I where %I = %L', c.table_schema, c.table_name, c.column_name, dX)
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.data_type = 'uuid'
+      and c.table_name in (select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE')
+  loop
+    execute tbl into i;
+    n := n + i;
+  end loop;
+  ok := n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D1 no uuid column in any public table still holds dX (' || n || ' found)';
+  if not ok then fails := fails + 1; end if;
+
+  -- D2: specific cascades.
+  ok := not exists (select 1 from public.profiles where id = dX)
+        and not exists (select 1 from public.user_consents where user_id = dX)
+        and not exists (select 1 from public.events where id = eX)
+        and not exists (select 1 from public.event_locations where event_id = eX)
+        and not exists (select 1 from public.conversations where id = conv)
+        and not exists (select 1 from public.messages where conversation_id = conv)
+        and not exists (select 1 from public.connect_tokens where token = 'lc_d_' || dX);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D2 profile, consent, hosted event + exact spot, chat (both sides), QR code gone';
+  if not ok then fails := fails + 1; end if;
+
+  -- D3: reports kept, anonymized.
+  ok := exists (select 1 from public.user_reports where reporter_id is null and reported_user_id = dY)
+        and exists (select 1 from public.user_reports where reporter_id = dZ and reported_user_id is null)
+        and exists (select 1 from public.event_reports where event_id = eY2 and reporter_id is null)
+        and exists (select 1 from public.moderation_log where admin_id is null and user_id = dY)
+        and not exists (select 1 from public.host_permissions where user_id = dX)
+        and exists (select 1 from public.account_restrictions where user_id = dW and created_by is null);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D3 user/event reports and moderation log kept with dX set to null';
+  if not ok then fails := fails + 1; end if;
+
+  -- D4: the other people are fine: dY's count and dY's event going_count.
+  perform set_config('request.jwt.claims', json_build_object('sub', dY, 'role', 'authenticated')::text, true);
+  ok := public.get_connection_count(dY) = 1
+        and (select going_count from public.events where id = eY) = 1
+        and exists (select 1 from public.profiles where id = dY);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D4 other users intact: dY count 1, dY event going_count back to 1';
+  if not ok then fails := fails + 1; end if;
+
+  -- D5: an event report now survives its event being deleted, with a snapshot.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', dZ, 'role', 'authenticated')::text, true);
+  v := public.report_event(eY, 'spam', null);
+  reset role;
+  delete from public.events where id = eY;
+  select * into rec from public.event_reports where reporter_id = dZ and reason = 'spam' and snapshot ->> 'title' = 'LC dY event';
+  ok := v ->> 'outcome' = 'reported' and rec.id is not null and rec.event_id is null;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D5 event report kept (event_id null) with a title snapshot after the event is deleted';
+  if not ok then fails := fails + 1; end if;
+
+  -- D6: avatars: you can list only your own folder; signed-out, nothing.
+  err := null;
+  begin
+    insert into storage.objects (bucket_id, name) values
+      ('avatars', dY || '/lc-test.jpg'), ('avatars', dZ || '/lc-test.jpg');
+  exception when others then err := sqlstate || ' ' || sqlerrm;
+  end;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', dY, 'role', 'authenticated')::text, true);
+  select count(*) into n from storage.objects where bucket_id = 'avatars';
+  ok := err is null and n = 1;
+  reset role;
+  perform set_config('role', 'anon', true);
+  select count(*) into n from storage.objects where bucket_id = 'avatars';
+  reset role;
+  ok := ok and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D6 avatars bucket: users list only their own folder, anon lists nothing' || coalesce(' (setup failed: ' || err || ')', '');
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.

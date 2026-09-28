@@ -19,3 +19,17 @@ export async function uploadAvatar(
   const { data } = supabase.storage.from('avatars').getPublicUrl(path);
   return data.publicUrl;
 }
+
+// Deletes a replaced photo so old pictures don't stay public forever. Only
+// touches files in the user's own folder; failures are ignored (the photo
+// is already swapped, and account deletion clears the folder anyway).
+export async function removeOldAvatar(userId: string, publicUrl: string | null | undefined) {
+  const marker = '/storage/v1/object/public/avatars/';
+  const index = publicUrl?.indexOf(marker) ?? -1;
+  if (!publicUrl || index === -1) return;
+  const path = decodeURIComponent(publicUrl.slice(index + marker.length).split('?')[0]);
+  if (!path.startsWith(`${userId}/`)) return;
+
+  const { error } = await supabase.storage.from('avatars').remove([path]);
+  if (error && __DEV__) console.warn('Failed to remove old avatar', error);
+}

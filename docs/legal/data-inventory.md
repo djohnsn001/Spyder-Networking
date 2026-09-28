@@ -8,7 +8,7 @@ the code. When the code changes what it collects, stores, shows, or keeps, updat
 same commit.
 
 - **Checked against:** branch `feature/legal-compliance`, migrations through
-  `20260928020000_user_safety.sql` (Phase 3), 2026-09-28. Sections describe the state **after**
+  `20260928030000_account_deletion.sql` (Phase 4), 2026-09-28. Sections describe the state **after**
   that migration is pushed.
 - **Scope:** the mobile app (iOS and Android) and the shared Supabase project. The partner's website
   only writes to `waitlist` (see section I).
@@ -29,7 +29,7 @@ same commit.
 | Session IP address and device user-agent | Supabase Auth, on each sign-in / token refresh | `auth.sessions.ip`, `auth.sessions.user_agent` | keeping the login session; security | only the team | while the session exists (deleted on log-out or session expiry) | Supabase |
 | Username | profile setup (**required**) | `profiles.username` | identity in the app, search, @mentions in UI | all signed-in users | until account deletion | Supabase |
 | Full name | profile (optional) | `profiles.full_name` | shown on profile | all signed-in users | until account deletion | Supabase |
-| Profile photo | photo library via image picker (optional) | Storage bucket `avatars`, path `<user_id>/<timestamp>.<ext>`; URL in `profiles.avatar_url` | shown on profile, map, chat | **anyone on the internet with the URL** (public bucket) | **forever today**: old photos are never deleted, even when replaced or on account deletion (flags M3, M4) | Supabase |
+| Profile photo | photo library via image picker (optional) | Storage bucket `avatars`, path `<user_id>/<timestamp>.<ext>`; URL in `profiles.avatar_url` | shown on profile, map, chat | **anyone on the internet with the URL** (public bucket; nobody can list the bucket except their own folder) | until replaced (the old file is deleted) or account deletion (the folder is deleted) | Supabase |
 | Bio | profile (optional, ≤160 chars) | `profiles.bio` | "what I'm building" | all signed-in users | until account deletion | Supabase |
 | Interests | profile (optional, fixed list of 12) | `profiles.interests` | discovery | all signed-in users | until account deletion | Supabase |
 | Business stage | profile (optional: idea / building / launched) | `profiles.business_stage` | discovery | all signed-in users | until account deletion | Supabase |
@@ -85,7 +85,7 @@ Supabase's disk encryption, and readable by anyone with database access (the tea
 
 | Data | Source | Where stored | Why we need it | Who can see it | How long we keep it | Sent to |
 |---|---|---|---|---|---|---|
-| Event report (event, reporter, reason, details ≤500) | user | `event_reports` | moderation, auto-hide | admins | **deleted if the reporter's account or the event is deleted** (flag M10) | Supabase |
+| Event report (event, reporter, reason, details ≤500, snapshot of the event's title/description/host) | user | `event_reports` | moderation, auto-hide | admins | kept indefinitely; **kept after the reporter's account or the event is deleted** (ids set null) | Supabase |
 | Moderation log (admin, action, event/user, note) | admin actions | `moderation_log` | accountability between admins | nobody in-app (SQL editor) | forever; user ids become null on account deletion | Supabase |
 | Blocked terms list | admins (SQL editor) | `blocked_terms` (shared by events and profiles) | content filter | nobody | until changed | Supabase |
 | Consent record: terms version, accepted at, 18+ confirmed at (**no birth date**) | sign-up checkbox (Phase 5) or the consent screen | `user_consents`, one row per version accepted, server time | proof the user agreed (clickwrap) and confirmed 18+ | only the user (and the team) | until account deletion | Supabase |
@@ -118,7 +118,7 @@ Supabase's disk encryption, and readable by anyone with database access (the tea
 
 | Data | Source | Where stored | Why | Who can see it | How long | Sent to |
 |---|---|---|---|---|---|---|
-| Waitlist email | website form | `waitlist` | launch list | only the team | no expiry set | Supabase (+ whatever the website host/analytics collect; check in the `bolas-web` handoff) |
+| Waitlist email | website form | `waitlist` | launch list | only the team | no expiry set; deleted along with a Bolas account that uses the same email | Supabase (+ whatever the website host/analytics collect; check in the `bolas-web` handoff) |
 
 ## Service providers (who we send data to)
 
@@ -168,3 +168,16 @@ All recommendations accepted, except M9 (left as-is for now). Where each fix lan
 | M10 | `event_reports` FKs become `on delete set null`, plus a snapshot of the event | Phase 4 |
 | M6 | Hide the notifications toggle until push exists | Phase 5.4 |
 | M9 | No change for now; the privacy policy must not promise "no read receipts" | — |
+
+## Account deletion (Phase 4)
+
+Settings → Delete account → type your username → **Delete my account**. The `delete-account` Edge
+Function deletes the user's `avatars/<user id>/` folder (Storage API), any `waitlist` row with the
+same email, and then the auth user. Every table cascades or sets null (tested in
+`supabase/tests/legal_compliance.sql` section D, which checks every uuid column in `public`).
+
+| Deleted | Kept, with the user set to null |
+|---|---|
+| auth user, profile, consent records, connections and requests (both sides), blocks (both sides), user_locations, bump events, QR codes, host permission, admin flag, suspension, events they host (with exact spots, RSVPs), their RSVPs, **whole conversations incl. the other person's messages** (Zane's call, 2026-09-28), creation/RSVP logs, avatar files, matching waitlist email | user reports they filed or received (with the snapshot), event reports they filed, moderation log entries |
+
+Supabase's own request logs (~1 day) and backups (per Supabase's policy) age out on their own.

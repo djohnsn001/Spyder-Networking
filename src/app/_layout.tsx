@@ -57,6 +57,10 @@ function RootNavigator() {
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="chat/[conversationId]" options={{ headerShown: true, headerTitle: '' }} />
           <Stack.Screen name="settings" options={{ headerShown: true, headerTitle: 'Settings' }} />
+          <Stack.Screen
+            name="delete-account"
+            options={{ headerShown: true, headerTitle: 'Delete account' }}
+          />
           <Stack.Screen name="admin/index" options={{ headerShown: true, headerTitle: 'Admin' }} />
           <Stack.Screen
             name="connections"

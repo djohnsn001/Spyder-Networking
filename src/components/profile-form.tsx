@@ -17,7 +17,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { uploadAvatar } from '@/lib/avatar';
+import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
 import { BioLimit, BusinessStages, InterestOptions, UsernamePattern } from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
@@ -81,8 +81,10 @@ export function ProfileForm({
         .update({ avatar_url: publicUrl })
         .eq('id', session.user.id);
       if (error) throw error;
+      const previousUrl = avatarUrl;
       setAvatarUrl(publicUrl);
       await refreshProfile();
+      void removeOldAvatar(session.user.id, previousUrl);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to upload photo.');
     } finally {
