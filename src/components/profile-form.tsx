@@ -266,14 +266,13 @@ export function ProfileForm({
                         style={({ pressed }) => [
                           styles.pill,
                           {
-                            backgroundColor: selected ? AccentColor : theme.backgroundSelected,
+                            backgroundColor: selected ? theme.secondaryAccent : theme.backgroundSelected,
                           },
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText
                           type="small"
-                          style={selected ? styles.pillLabelSelected : undefined}
-                          themeColor={selected ? undefined : 'text'}>
+                          themeColor={selected ? 'onSecondaryAccent' : 'text'}>
                           {stage.label}
                         </ThemedText>
                       </Pressable>
@@ -296,14 +295,13 @@ export function ProfileForm({
                         style={({ pressed }) => [
                           styles.pill,
                           {
-                            backgroundColor: selected ? AccentColor : theme.backgroundSelected,
+                            backgroundColor: selected ? theme.secondaryAccent : theme.backgroundSelected,
                           },
                           pressed && styles.pressed,
                         ]}>
                         <ThemedText
                           type="small"
-                          style={selected ? styles.pillLabelSelected : undefined}
-                          themeColor={selected ? undefined : 'text'}>
+                          themeColor={selected ? 'onSecondaryAccent' : 'text'}>
                           {interest}
                         </ThemedText>
                       </Pressable>
@@ -403,9 +401,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.five,
-  },
-  pillLabelSelected: {
-    color: '#fdfbf7',
   },
   pressed: {
     opacity: 0.8,

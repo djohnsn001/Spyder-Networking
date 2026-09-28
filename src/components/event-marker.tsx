@@ -2,16 +2,14 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Circle, Marker } from 'react-native-maps';
 
-import { AccentColor } from '@/constants/theme';
+import { BorderWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { EVENT_CIRCLE_RADIUS_M, hasExactLocation } from '@/lib/events';
 import type { EventSummary } from '@/lib/types';
 
-const TILE_WIDTH = 42;
-const CREAM = '#fdfbf7';
-const INK = '#2a211c';
-// AccentColor (#83655d) at low opacity: a soft "somewhere in here" area.
-const CIRCLE_FILL = 'rgba(131, 101, 93, 0.16)';
-const CIRCLE_STROKE = 'rgba(131, 101, 93, 0.55)';
+const TILE_WIDTH = 44;
+const MONTH_FONT_SIZE = 12;
+const MONTH_LINE_HEIGHT = 16;
 
 // Custom marker views are re-rendered into a bitmap on every frame while
 // tracksViewChanges is on (noticeably costly on Android with many pins).
@@ -33,16 +31,25 @@ export function eventMarkerKey(event: EventSummary) {
 }
 
 // The calendar tile: square-ish (people are circles) and showing the date,
-// so you can scan the map for "what's this week".
-function CalendarTile({ startsAt }: { startsAt: string }) {
+// so you can scan the map for "what's this week". Faded tiles (a host's
+// hidden/removed event) swap the accent for a muted tone instead of going
+// see-through, so the date stays readable.
+function CalendarTile({ startsAt, faded }: { startsAt: string; faded: boolean }) {
+  const theme = useTheme();
+  const frameColor = faded ? theme.markerMuted : theme.accent;
   const start = new Date(startsAt);
   const month = start.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
   return (
-    <View style={styles.tile}>
-      <View style={styles.tileHeader}>
-        <Text style={styles.monthText}>{month}</Text>
+    <View
+      style={[styles.tile, { backgroundColor: theme.markerSurface, borderColor: frameColor }]}>
+      <View style={[styles.tileHeader, { backgroundColor: frameColor }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.monthText, { color: faded ? theme.onMarkerMuted : theme.onAccent }]}>
+          {month}
+        </Text>
       </View>
-      <Text style={styles.dayText}>{start.getDate()}</Text>
+      <Text style={[styles.dayText, { color: theme.markerInk }]}>{start.getDate()}</Text>
     </View>
   );
 }
@@ -53,9 +60,10 @@ function CalendarTile({ startsAt }: { startsAt: string }) {
 // - Approximate (everyone else): a 400 m circle around the fuzzed point with
 //   the tile centered in it and no tail, so it doesn't read as a pin. The
 //   real spot is always somewhere inside the circle.
-// Hosts also see their own hidden/removed events, faded, so they can tap
-// through to see why.
+// Hosts also see their own hidden/removed events, in a muted tone, so they
+// can tap through to see why.
 export function EventMarker({ event, onPress }: { event: EventSummary; onPress: () => void }) {
+  const theme = useTheme();
   const tracksViewChanges = useStopTrackingAfterFirstPaint();
   const faded = event.status !== 'active';
   const label = `Event: ${event.title}`;
@@ -69,9 +77,14 @@ export function EventMarker({ event, onPress }: { event: EventSummary; onPress: 
         tracksViewChanges={tracksViewChanges}
         onPress={onPress}
         accessibilityLabel={label}>
-        <View style={[styles.wrapper, faded && styles.faded]}>
-          <CalendarTile startsAt={event.starts_at} />
-          <View style={styles.tail} />
+        <View style={styles.wrapper}>
+          <CalendarTile startsAt={event.starts_at} faded={faded} />
+          <View
+            style={[
+              styles.tail,
+              { borderTopColor: faded ? theme.markerMuted : theme.accent },
+            ]}
+          />
         </View>
       </Marker>
     );
@@ -83,9 +96,9 @@ export function EventMarker({ event, onPress }: { event: EventSummary; onPress: 
       <Circle
         center={center}
         radius={EVENT_CIRCLE_RADIUS_M}
-        fillColor={CIRCLE_FILL}
-        strokeColor={CIRCLE_STROKE}
-        strokeWidth={1}
+        fillColor={theme.eventAreaFill}
+        strokeColor={theme.eventAreaStroke}
+        strokeWidth={BorderWidth.thin}
         zIndex={5}
       />
       <Marker
@@ -95,8 +108,8 @@ export function EventMarker({ event, onPress }: { event: EventSummary; onPress: 
         tracksViewChanges={tracksViewChanges}
         onPress={onPress}
         accessibilityLabel={`${label}, approximate area`}>
-        <View style={[styles.wrapper, faded && styles.faded]}>
-          <CalendarTile startsAt={event.starts_at} />
+        <View style={styles.wrapper}>
+          <CalendarTile startsAt={event.starts_at} faded={faded} />
         </View>
       </Marker>
     </>
@@ -105,6 +118,7 @@ export function EventMarker({ event, onPress }: { event: EventSummary; onPress: 
 
 // The temporary pin shown while the Create event sheet is open.
 export function DraftEventMarker({ coordinate }: { coordinate: { latitude: number; longitude: number } }) {
+  const theme = useTheme();
   const tracksViewChanges = useStopTrackingAfterFirstPaint();
 
   return (
@@ -115,10 +129,15 @@ export function DraftEventMarker({ coordinate }: { coordinate: { latitude: numbe
       tracksViewChanges={tracksViewChanges}
       accessibilityLabel="New event location">
       <View style={styles.wrapper}>
-        <View style={[styles.tile, styles.draftTile]}>
-          <Text style={styles.draftPlus}>+</Text>
+        <View
+          style={[
+            styles.tile,
+            styles.draftTile,
+            { backgroundColor: theme.accent, borderColor: theme.markerOutline },
+          ]}>
+          <Text style={[styles.draftPlus, { color: theme.onAccent }]}>+</Text>
         </View>
-        <View style={styles.tail} />
+        <View style={[styles.tail, { borderTopColor: theme.accent }]} />
       </View>
     </Marker>
   );
@@ -128,33 +147,25 @@ const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',
   },
-  faded: {
-    opacity: 0.5,
-  },
   tile: {
     width: TILE_WIDTH,
-    borderRadius: 8,
+    borderRadius: Spacing.two,
     overflow: 'hidden',
-    backgroundColor: CREAM,
-    borderWidth: 2,
-    borderColor: AccentColor,
+    borderWidth: BorderWidth.thick,
     alignItems: 'center',
   },
   tileHeader: {
     alignSelf: 'stretch',
-    backgroundColor: AccentColor,
-    paddingVertical: 1,
+    paddingVertical: Spacing.half,
     alignItems: 'center',
   },
   monthText: {
-    color: CREAM,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
+    fontSize: MONTH_FONT_SIZE,
+    lineHeight: MONTH_LINE_HEIGHT,
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
   dayText: {
-    color: INK,
     fontSize: 17,
     lineHeight: 22,
     fontWeight: '700',
@@ -162,11 +173,8 @@ const styles = StyleSheet.create({
   draftTile: {
     height: 38,
     justifyContent: 'center',
-    backgroundColor: AccentColor,
-    borderColor: CREAM,
   },
   draftPlus: {
-    color: CREAM,
     fontSize: 24,
     lineHeight: 28,
     fontWeight: '700',
@@ -181,6 +189,5 @@ const styles = StyleSheet.create({
     borderTopWidth: 9,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: AccentColor,
   },
 });
