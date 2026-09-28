@@ -64,7 +64,7 @@ same commit.
 
 | Data | Source | Where stored | Why we need it | Who can see it | How long we keep it | Sent to |
 |---|---|---|---|---|---|---|
-| Event (title, description, start/end, visibility public/connections, status, going count) | host | `events` | map events | public events: all signed-in users; connections-only: host + their connections; hidden/removed: host + admins | deleted **30 days after it ends** (with its exact spot and RSVPs), or earlier by the host / account deletion. Events with any report are kept until Phase 4 (flag M10) | Supabase |
+| Event (title, description, start/end, visibility public/connections, status, going count) | host | `events` | map events | public events: all signed-in users; connections-only: host + their connections; hidden/removed: host + admins | deleted **30 days after it ends** (with its exact spot and RSVPs), or earlier by the host / account deletion. An ended event with an **open** report is kept until an admin resolves it (resolved reports survive on their own) | Supabase |
 | RSVP ("Going") | tap Going | `event_attendees` | attendance, unlocks exact spot | you, the host, admins, and your own connections | until you un-RSVP, the event is deleted, or account deletion | Supabase |
 | RSVP log | automatic | `event_rsvp_log` | 30-RSVPs-per-day limit | nobody | deleted after 7 days (cleanup job) | Supabase |
 | Event creation log | automatic | `event_creation_log` | 5-creates-per-day limit | nobody | deleted after 7 days (cleanup job) | Supabase |
@@ -137,8 +137,9 @@ Apple's sense) and sells no data.
 
 ## Minimization review
 
-These are the places where Bolas collects something it doesn't need, keeps it longer than needed, or
-exposes more than intended. **Nothing here has been changed.** Each flag needs a decision from Zane.
+These were the places where Bolas collected something it didn't need, kept it longer than needed, or
+exposed more than intended (as found in Phase 1). The tables above already describe the fixed state;
+see "Decisions" below for where each fix landed.
 
 | # | Finding | Why it matters | Recommendation |
 |---|---|---|---|
