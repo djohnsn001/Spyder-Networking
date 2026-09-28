@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -39,6 +39,16 @@ export default function DeleteAccountScreen() {
 
   const matches = confirm.trim().toLowerCase() === expected.toLowerCase();
 
+  // The confirm box and the button sit at the bottom, so once the keyboard
+  // is up, scroll there — otherwise the keyboard covers what you're typing.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => subscription.remove();
+  }, []);
+
   async function handleDelete() {
     if (!session || !matches) return;
     setErrorMessage(null);
@@ -62,92 +72,92 @@ export default function DeleteAccountScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled">
-            <ThemedText type="subtitle" accessibilityRole="header">
-              Delete your account
-            </ThemedText>
+      <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
+        {/* Same approach as the event report screen: iOS insets the scroll
+            view by the keyboard's height; Android resizes the window. */}
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+          <ThemedText type="subtitle" accessibilityRole="header">
+            Delete your account
+          </ThemedText>
 
-            <ThemedView type="backgroundElement" style={styles.card}>
-              <ThemedText type="smallBold">This permanently deletes:</ThemedText>
-              {DELETED.map((item) => (
-                <View key={item} style={styles.bulletRow}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    •
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.bulletText}>
-                    {item}
-                  </ThemedText>
-                </View>
-              ))}
-            </ThemedView>
-
-            <ThemedView type="backgroundElement" style={styles.card}>
-              <ThemedText type="smallBold">What we keep</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                Safety reports you made, or that were made about you, are kept so we can keep the
-                community safe. They&apos;re no longer linked to your account, but a report can
-                include a copy of the profile or message that was reported.
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedText type="smallBold" style={{ color: DangerColor }}>
-              This can&apos;t be undone.
-            </ThemedText>
-
-            <View style={styles.field}>
-              <ThemedText type="small" themeColor="textSecondary" nativeID="confirm-label">
-                {profile?.username
-                  ? `Type your username (${profile.username}) to confirm`
-                  : 'Type DELETE to confirm'}
-              </ThemedText>
-              <TextInput
-                value={confirm}
-                onChangeText={setConfirm}
-                placeholder={expected}
-                placeholderTextColor={theme.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!isDeleting}
-                accessibilityLabelledBy="confirm-label"
-                accessibilityLabel="Confirm by typing your username"
-                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundSelected }]}
-              />
-            </View>
-
-            {errorMessage ? (
-              <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
-                {errorMessage}
-              </ThemedText>
-            ) : null}
-
-            <Pressable
-              onPress={handleDelete}
-              disabled={!matches || isDeleting}
-              accessibilityRole="button"
-              accessibilityLabel="Delete my account"
-              accessibilityState={{ disabled: !matches || isDeleting, busy: isDeleting }}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: DangerColor, opacity: !matches || isDeleting ? 0.5 : 1 },
-                pressed && matches && styles.buttonPressed,
-              ]}>
-              {isDeleting ? (
-                <ActivityIndicator color="#fdfbf7" />
-              ) : (
-                <ThemedText type="smallBold" style={styles.buttonLabel}>
-                  Delete my account
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">This permanently deletes:</ThemedText>
+            {DELETED.map((item) => (
+              <View key={item} style={styles.bulletRow}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  •
                 </ThemedText>
-              )}
-            </Pressable>
-          </ScrollView>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.bulletText}>
+                  {item}
+                </ThemedText>
+              </View>
+            ))}
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">What we keep</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Safety reports you made, or that were made about you, are kept so we can keep the
+              community safe. They&apos;re no longer linked to your account, but a report can
+              include a copy of the profile or message that was reported.
+            </ThemedText>
+          </ThemedView>
+
+          <ThemedText type="smallBold" style={{ color: DangerColor }}>
+            This can&apos;t be undone.
+          </ThemedText>
+
+          <View style={styles.field}>
+            <ThemedText type="small" themeColor="textSecondary" nativeID="confirm-label">
+              {profile?.username
+                ? `Type your username (${profile.username}) to confirm`
+                : 'Type DELETE to confirm'}
+            </ThemedText>
+            <TextInput
+              value={confirm}
+              onChangeText={setConfirm}
+              placeholder={expected}
+              placeholderTextColor={theme.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isDeleting}
+              accessibilityLabelledBy="confirm-label"
+              accessibilityLabel="Confirm by typing your username"
+              style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundSelected }]}
+            />
+          </View>
+
+          {errorMessage ? (
+            <ThemedText type="small" style={styles.errorText} accessibilityLiveRegion="polite">
+              {errorMessage}
+            </ThemedText>
+          ) : null}
+
+          <Pressable
+            onPress={handleDelete}
+            disabled={!matches || isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete my account"
+            accessibilityState={{ disabled: !matches || isDeleting, busy: isDeleting }}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: DangerColor, opacity: !matches || isDeleting ? 0.5 : 1 },
+              pressed && matches && styles.buttonPressed,
+            ]}>
+            {isDeleting ? (
+              <ActivityIndicator color="#fdfbf7" />
+            ) : (
+              <ThemedText type="smallBold" style={styles.buttonLabel}>
+                Delete my account
+              </ThemedText>
+            )}
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
     </ThemedView>
   );
 }
