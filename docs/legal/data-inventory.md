@@ -8,7 +8,7 @@ the code. When the code changes what it collects, stores, shows, or keeps, updat
 same commit.
 
 - **Checked against:** branch `feature/legal-compliance`, migrations through
-  `20260928000000_data_retention.sql` (Phase 1b), 2026-09-28. Sections describe the state **after**
+  `20260928010000_legal_consent.sql` (Phase 2), 2026-09-28. Sections describe the state **after**
   that migration is pushed.
 - **Scope:** the mobile app (iOS and Android) and the shared Supabase project. The partner's website
   only writes to `waitlist` (see section I).
@@ -87,7 +87,8 @@ Supabase's disk encryption, and readable by anyone with database access (the tea
 | Event report (event, reporter, reason, details ≤500) | user | `event_reports` | moderation, auto-hide | admins | **deleted if the reporter's account or the event is deleted** (flag M10) | Supabase |
 | Moderation log (admin, action, event/user, note) | admin actions | `moderation_log` | accountability between admins | nobody in-app (SQL editor) | forever; user ids become null on account deletion | Supabase |
 | Blocked terms list | admins | `event_blocked_terms` | spam speed bump | nobody | until changed | Supabase |
-| *Planned (Phase 2):* terms version, terms accepted at, 18+ confirmed at | sign-up checkbox | `profiles` (per plan; see flag M1) | proof of consent | TBD | until account deletion | Supabase |
+| Consent record: terms version, accepted at, 18+ confirmed at (**no birth date**) | sign-up checkbox (Phase 5) or the consent screen | `user_consents`, one row per version accepted, server time | proof the user agreed (clickwrap) and confirmed 18+ | only the user (and the team) | until account deletion | Supabase |
+| Sign-up metadata (`terms_version`, `age_confirmed`) | sign-up call | `auth.users.raw_user_meta_data` | read once by the sign-up trigger | only the team | until account deletion | Supabase |
 | *Planned (Phase 3):* blocks | user | `user_blocks` | safety | the blocker only | until unblocked or either account deleted | Supabase |
 | *Planned (Phase 3):* user reports incl. a server-made snapshot of the profile/message | user | `user_reports` | moderation | admins | **kept after either account is deleted** (ids set null) | Supabase |
 | *Planned (Phase 3):* account suspension (+ reason) | admins | `account_restrictions` | enforcement | the user, admins | until lifted or account deletion | Supabase |

@@ -7,15 +7,20 @@
 --
 --   npx supabase db query --linked -f supabase/tests/legal_compliance.sql
 --
--- Sections: L = map location defaults, R = retention sweep.
--- (Phases 2–4 add A = consent, B = blocking, C = reports + admin,
--- D = deletion cascade, E = content filter.)
+-- Sections: A = consent, L = map location defaults, R = retention sweep.
+-- (Phases 3–4 add B = blocking, C = reports + admin, D = deletion cascade,
+-- E = content filter.)
 
 do $tests$
 declare
   u1 uuid := gen_random_uuid();   -- sharing on
   u2 uuid := gen_random_uuid();   -- sharing off
   u3 uuid := gen_random_uuid();   -- event host / misc
+  -- Consent
+  ua_ok uuid := gen_random_uuid();     -- signed up with current version + 18+
+  ua_noage uuid := gen_random_uuid();  -- signed up without the 18+ flag
+  ua_stale uuid := gen_random_uuid();  -- signed up with an old terms version
+  v_current text := public._current_terms_version();
 
   report text := '';
   fails int := 0;
@@ -41,6 +46,109 @@ begin
   update public.profiles
   set username = 'lc_' || left(replace(id::text, '-', ''), 12)
   where id in (u1, u2, u3);
+
+  -- =====================================================================
+  -- A. Consent
+  -- =====================================================================
+
+  -- Sign-ups, the way supabase.auth.signUp({ options: { data } }) lands.
+  insert into auth.users (id, email, aud, role, raw_user_meta_data) values
+    (ua_ok, ua_ok || '@test.bolas.invalid', 'authenticated', 'authenticated',
+      jsonb_build_object('terms_version', v_current, 'age_confirmed', true)),
+    (ua_noage, ua_noage || '@test.bolas.invalid', 'authenticated', 'authenticated',
+      jsonb_build_object('terms_version', v_current)),
+    (ua_stale, ua_stale || '@test.bolas.invalid', 'authenticated', 'authenticated',
+      jsonb_build_object('terms_version', '2000-01-01', 'age_confirmed', true));
+
+  -- A1: current version + 18+ -> consent recorded with server time; profile still created.
+  select * into rec from public.user_consents where user_id = ua_ok;
+  ok := rec.terms_version = v_current and rec.accepted_at = now() and rec.age_confirmed_at = now()
+        and exists (select 1 from public.profiles where id = ua_ok);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A1 sign-up with current version + 18+ -> consent recorded (server time)';
+  if not ok then fails := fails + 1; end if;
+
+  -- A2: no 18+ flag, or a stale version -> nothing recorded, gate says needs_acceptance.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_noage, 'role', 'authenticated')::text, true);
+  v := public.get_my_consent_status();
+  ok := (v ->> 'needs_acceptance')::boolean and v ->> 'current_version' = v_current
+        and v -> 'accepted_version' = 'null'::jsonb;
+  reset role;
+  ok := ok and not exists (select 1 from public.user_consents where user_id in (ua_noage, ua_stale));
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A2 sign-up without 18+ / with stale version -> nothing recorded, needs_acceptance (' || v::text || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- A3: accept_terms outcomes.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_noage, 'role', 'authenticated')::text, true);
+  v := public.accept_terms('2000-01-01', true);
+  ok := v ->> 'outcome' = 'stale_version' and v ->> 'current_version' = v_current;
+  v := public.accept_terms(v_current, false);
+  ok := ok and v ->> 'outcome' = 'age_required';
+  v := public.accept_terms(v_current, null);
+  ok := ok and v ->> 'outcome' = 'age_required';
+  select count(*) into n from public.user_consents where user_id = ua_noage;
+  ok := ok and n = 0;
+  v := public.accept_terms(v_current, true);
+  ok := ok and v ->> 'outcome' = 'accepted';
+  v := public.get_my_consent_status();
+  ok := ok and not (v ->> 'needs_acceptance')::boolean and v ->> 'accepted_version' = v_current;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A3 accept_terms: stale_version / age_required x2 / accepted, then gate clears';
+  if not ok then fails := fails + 1; end if;
+
+  -- A4: users can't write consent rows directly (no insert/update/delete policies).
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_stale, 'role', 'authenticated')::text, true);
+  err := null;
+  begin
+    insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+    values (ua_stale, v_current, now() - interval '1 year', now() - interval '1 year');
+  exception when others then err := sqlstate;
+  end;
+  ok := err = '42501';
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_ok, 'role', 'authenticated')::text, true);
+  update public.user_consents set accepted_at = now() - interval '1 year' where user_id = ua_ok;
+  get diagnostics n = row_count;
+  ok := ok and n = 0;
+  delete from public.user_consents where user_id = ua_ok;
+  get diagnostics n = row_count;
+  ok := ok and n = 0;
+  reset role;
+  ok := ok and exists (select 1 from public.user_consents where user_id = ua_ok and accepted_at = now());
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A4 direct insert refused (' || coalesce(err, 'no error') || '), update/delete change nothing';
+  if not ok then fails := fails + 1; end if;
+
+  -- A5: a normal profile edit still works.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_ok, 'role', 'authenticated')::text, true);
+  update public.profiles set bio = 'Building things' where id = ua_ok;
+  get diagnostics n = row_count;
+  reset role;
+  ok := n = 1 and exists (select 1 from public.profiles where id = ua_ok and bio = 'Building things');
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A5 profile bio edit still works';
+  if not ok then fails := fails + 1; end if;
+
+  -- A6: you see only your own consent rows.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua_ok, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.user_consents where user_id in (ua_ok, ua_noage);
+  reset role;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A6 consent rows visible only to their owner (' || n || ' seen)';
+  if not ok then fails := fails + 1; end if;
+
+  -- A7: signed-out callers are refused.
+  perform set_config('role', 'anon', true);
+  err := null;
+  begin perform public.accept_terms(v_current, true); exception when others then err := sqlstate; end;
+  ok := err = '42501';
+  err := null;
+  begin perform public.get_my_consent_status(); exception when others then err := sqlstate; end;
+  ok := ok and err = '42501';
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A7 anon refused by accept_terms and get_my_consent_status';
+  if not ok then fails := fails + 1; end if;
 
   -- =====================================================================
   -- L. Map location
