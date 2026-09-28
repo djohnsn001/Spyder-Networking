@@ -8,7 +8,7 @@
 --   npx supabase db query --linked -f supabase/tests/event_safety.sql
 --
 -- Sections: A = hosting trust, B = write lock + validation, C = location,
--- D = attendee privacy.
+-- D = attendee privacy, E = reports + admin.
 
 do $tests$
 declare
@@ -41,6 +41,8 @@ declare
   eid_e uuid;
   x uuid;
   succ int;
+  eid_c2 uuid;
+  rec record;
   e public.events%rowtype;
   t0 timestamptz := date_trunc('minute', now()) + interval '1 day';
 begin
@@ -697,6 +699,225 @@ begin
   ok := ok and n = 0;
   select count(*) into n from public.events;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D11 event delete ok; host RSVPs not logged; going_count right for all ' || n || ' events';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- E. Reports and admin tools
+  -- =====================================================================
+
+  -- eid is u_trusted's public event (active, 4 going). Account ages:
+  -- f1/f2/f3 30 days, u_acq 8 days (all count toward auto-hide); u_new and
+  -- u_rate 1 day (don't count).
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  eid_c2 := (public.create_event('Friends only', null, null, 43.6, -116.2, t0, null, 'connections') ->> 'event_id')::uuid;
+
+  -- E1: can't report your own event, one you can't see, or with a bad reason.
+  v := public.report_event(eid, 'spam', null);
+  ok := v ->> 'outcome' = 'self';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_rate, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid_c2, 'spam', null);
+  ok := ok and v ->> 'outcome' = 'not_found';
+  v := public.report_event(gen_random_uuid(), 'spam', null);
+  ok := ok and v ->> 'outcome' = 'not_found';
+  v := public.report_event(eid, 'boring', null);
+  ok := ok and v ->> 'outcome' = 'invalid' and v ->> 'field' = 'reason';
+  v := public.report_event(eid, 'other', repeat('x', 501));
+  ok := ok and v ->> 'outcome' = 'invalid' and v ->> 'field' = 'details';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E1 report own -> self; invisible/missing -> not_found; bad reason/details -> invalid';
+  if not ok then fails := fails + 1; end if;
+
+  -- E2: 2 old-enough reports + 1 from a 1-day-old account -> still active;
+  -- reporting twice -> already_reported; users can't read reports.
+  perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'spam', '  Selling a course  ');
+  ok := v ->> 'outcome' = 'reported' and not (v ->> 'hidden')::boolean;
+  v := public.report_event(eid, 'fake', null);
+  ok := ok and v ->> 'outcome' = 'already_reported';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_new, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'fake', null);
+  ok := ok and v ->> 'outcome' = 'reported' and not (v ->> 'hidden')::boolean;
+  perform set_config('request.jwt.claims', json_build_object('sub', f2, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'spam', null);
+  ok := ok and v ->> 'outcome' = 'reported' and not (v ->> 'hidden')::boolean;
+  select count(*) into n from public.event_reports;
+  ok := ok and n = 0;
+  reset role;
+  select * into e from public.events where id = eid;
+  ok := ok and e.status = 'active';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E2 3 reports incl. a 1-day-old account -> still active; twice -> already_reported; reports unreadable';
+  if not ok then fails := fails + 1; end if;
+
+  -- E3: a third old-enough report hides it.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', f3, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'unsafe_location', 'The address is a house');
+  reset role;
+  select * into e from public.events where id = eid;
+  ok := v ->> 'outcome' = 'reported' and (v ->> 'hidden')::boolean and e.status = 'hidden';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E3 3rd report from an account 3+ days old -> hidden';
+  if not ok then fails := fails + 1; end if;
+
+  -- E4: hidden -> gone for others (can't report it either), still there
+  -- for the host with status hidden.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_rate, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eid;
+  ok := n = 0;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_acq, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'spam', null);
+  ok := ok and v ->> 'outcome' = 'not_found';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eid and status = 'hidden';
+  ok := ok and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E4 hidden event: invisible to others, visible to host as hidden';
+  if not ok then fails := fails + 1; end if;
+
+  -- E5: non-admins get 42501 from every admin RPC.
+  n := 0;
+  begin perform public.admin_list_flagged_events(); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.admin_set_event_status(eid, 'active', null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.admin_set_host_status(u_trusted, 'approved', null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.admin_find_user('es_'); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  ok := n = 4;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E5 non-admin refused by all 4 admin RPCs (' || n || '/4)';
+  if not ok then fails := fails + 1; end if;
+
+  -- E6: the flagged list shows the event with its exact spot and report breakdown.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  select * into rec from public.admin_list_flagged_events() f where f.event_id = eid;
+  ok := rec.event_id is not null and rec.status = 'hidden' and rec.open_reports = 4 and rec.counted_reports = 3
+    and rec.reports_by_reason = '{"spam": 2, "fake": 1, "unsafe_location": 1}'::jsonb
+    and rec.latitude = 43.615 and rec.location_name = 'Boise Library'
+    and jsonb_array_length(rec.recent_reports) = 4
+    -- (every test report has the same created_at, so check membership, not order)
+    and rec.recent_reports @> '[{"details": "The address is a house", "counts": true}]'::jsonb
+    and not exists (select 1 from public.admin_list_flagged_events() f where f.event_id = eid_c2);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E6 admin flagged list: hidden event, 4 open / 3 counted, by reason, exact spot'
+    || case when ok then '' else ' (' || coalesce(rec::text, 'no row') || ')' end;
+  if not ok then fails := fails + 1; end if;
+
+  -- E7: restore -> active, reports dismissed, off the list, logged.
+  v := public.admin_set_event_status(eid, 'active', 'Checked it, looks fine');
+  ok := v ->> 'outcome' = 'updated'
+    and not exists (select 1 from public.admin_list_flagged_events() f where f.event_id = eid);
+  reset role;
+  select * into e from public.events where id = eid;
+  select count(*) into n from public.event_reports where event_id = eid and status = 'dismissed';
+  ok := ok and e.status = 'active' and n = 4
+    and exists (
+      select 1 from public.moderation_log
+      where event_id = eid and admin_id = u_admin and action = 'event_active' and note = 'Checked it, looks fine'
+    );
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E7 restore: active, 4 reports dismissed, off the list, logged';
+  if not ok then fails := fails + 1; end if;
+
+  -- E8: after a restore, one new report doesn't re-hide it (the count starts over).
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_acq, 'role', 'authenticated')::text, true);
+  v := public.report_event(eid, 'spam', null);
+  ok := v ->> 'outcome' = 'reported' and not (v ->> 'hidden')::boolean;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E8 after restore, 1 new report does not re-hide';
+  if not ok then fails := fails + 1; end if;
+
+  -- E9: remove -> removed; the host still sees it but can't delete or edit it;
+  -- others can't see it; open reports actioned.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  v := public.admin_set_event_status(eid, 'removed', null);
+  ok := v ->> 'outcome' = 'updated';
+  v := public.admin_set_event_status(eid, 'hidden', null);
+  ok := ok and v ->> 'outcome' = 'invalid';
+  perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eid;
+  ok := ok and n = 0;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eid and status = 'removed';
+  ok := ok and n = 1;
+  delete from public.events where id = eid;
+  get diagnostics n = row_count;
+  ok := ok and n = 0;
+  v := public.update_event(eid, 'Please', null, t0, null, 'connections');
+  ok := ok and v ->> 'outcome' = 'event_removed';
+  reset role;
+  select count(*) into n from public.event_reports where event_id = eid and status = 'actioned';
+  ok := ok and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E9 remove: hidden from others, host sees it but cannot delete/edit, report actioned';
+  if not ok then fails := fails + 1; end if;
+
+  -- E10: suspending a host removes their upcoming events and blocks hosting.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  v := public.admin_set_host_status(u_appr, 'suspended', 'Spam events');
+  ok := v ->> 'outcome' = 'updated' and (v ->> 'events_removed')::int = 3;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_appr, 'role', 'authenticated')::text, true);
+  v := public.create_event('Back again', null, null, 43.6, -116.2, t0, null, 'connections');
+  ok := ok and v ->> 'outcome' = 'not_allowed' and v ->> 'reason' = 'suspended';
+  v := public.get_my_hosting_status();
+  ok := ok and not (v ->> 'can_host')::boolean and v ->> 'reason' = 'suspended';
+  reset role;
+  select count(*) into n from public.events where creator_id = u_appr and status <> 'removed';
+  ok := ok and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E10 suspend: 3 upcoming events removed, host gets not_allowed';
+  if not ok then fails := fails + 1; end if;
+
+  -- E11: clearing the row drops them back to the automatic rule (1 day old ->
+  -- connections-only); approving unlocks public.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  v := public.admin_set_host_status(u_appr, null, null);
+  ok := v ->> 'outcome' = 'updated';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_appr, 'role', 'authenticated')::text, true);
+  v := public.create_event('Back again', null, null, 43.6, -116.2, t0, null, 'public');
+  ok := ok and v ->> 'outcome' = 'public_locked';
+  v := public.create_event('Back again', null, null, 43.6, -116.2, t0, null, 'connections');
+  ok := ok and v ->> 'outcome' = 'created';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  v := public.admin_set_host_status(u_appr, 'approved', null);
+  v2 := public.admin_set_host_status(u_appr, 'banned', null);
+  ok := ok and v ->> 'outcome' = 'updated' and v2 ->> 'outcome' = 'invalid';
+  perform set_config('request.jwt.claims', json_build_object('sub', u_appr, 'role', 'authenticated')::text, true);
+  v := public.create_event('Public again', null, null, 43.6, -116.2, t0, null, 'public');
+  ok := ok and v ->> 'outcome' = 'created';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E11 clear -> automatic rule (public locked); approve -> public ok; bad status invalid';
+  if not ok then fails := fails + 1; end if;
+
+  -- E12: admin_find_user by a case-insensitive username prefix.
+  reset role;
+  select upper(left(username, 9)) into err from public.profiles where id = u_appr;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  select * into rec from public.admin_find_user(err) f where f.user_id = u_appr;
+  ok := rec.user_id is not null and rec.host_status = 'approved'
+    and (rec.hosting ->> 'can_host_public')::boolean;
+  select count(*) into n from public.admin_find_user('%');
+  ok := ok and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E12 admin_find_user: prefix match with hosting status; % is literal';
+  if not ok then fails := fails + 1; end if;
+
+  -- E13: the 11th report in a day -> rate_limited.
+  for i in 1..11 loop
+    perform public.create_event('Report target ' || i, null, null, 43.6, -116.2, t0, null, 'public');
+  end loop;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_rate, 'role', 'authenticated')::text, true);
+  succ := 0;
+  n := 0;
+  for x in select s.id from public.event_summaries s where s.title like 'Report target %' order by s.title loop
+    v := public.report_event(x, 'spam', null);
+    if v ->> 'outcome' = 'reported' then succ := succ + 1; end if;
+    if v ->> 'outcome' = 'rate_limited' then n := n + 1; end if;
+  end loop;
+  ok := succ = 10 and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E13 11th report in 24h -> rate_limited (' || succ || ' reported, ' || n || ' limited)';
+  if not ok then fails := fails + 1; end if;
+
+  -- E14: signed-out callers can't report.
+  reset role;
+  perform set_config('role', 'anon', true);
+  err := null;
+  begin perform public.report_event(eid_c2, 'spam', null); exception when others then err := sqlstate; end;
+  reset role;
+  ok := err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E14 anon refused by report_event';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.
