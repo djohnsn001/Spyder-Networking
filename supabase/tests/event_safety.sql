@@ -7,7 +7,7 @@
 --
 --   npx supabase db query --linked -f supabase/tests/event_safety.sql
 --
--- Sections: A = hosting trust, B = write lock + validation.
+-- Sections: A = hosting trust, B = write lock + validation, C = location.
 
 do $tests$
 declare
@@ -212,7 +212,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
   err := null;
   begin
-    insert into public.events (creator_id, title, latitude, longitude, starts_at, visibility)
+    insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
     values (u_trusted, 'Sneaky', 43.6, -116.2, t0, 'public');
   exception when others then err := sqlstate;
   end;
@@ -221,10 +221,10 @@ begin
   if not ok then fails := fails + 1; end if;
 
   -- B2: a direct update of your own event changes nothing.
-  update public.events set title = 'Hacked', latitude = 0 where id = eid;
+  update public.events set title = 'Hacked', approx_latitude = 0 where id = eid;
   reset role;
   select * into e from public.events where id = eid;
-  ok := e.title = 'Pitch night' and e.latitude = 43.6;
+  ok := e.title = 'Pitch night' and e.approx_latitude <> 0;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B2 direct update of own event changes nothing';
   if not ok then fails := fails + 1; end if;
 
@@ -312,7 +312,7 @@ begin
   v := public.update_event(eid, '  Pitch night v2 ', 'Bring a deck', t0, t0 + interval '2 hours', 'public');
   select * into e from public.events where id = eid;
   ok := v ->> 'outcome' = 'updated' and e.title = 'Pitch night v2' and e.time_changed_at is null
-        and e.latitude = 43.6;
+        and exists (select 1 from public.event_locations where event_id = eid and latitude = 43.6);
   v := public.update_event(eid, 'Pitch night v2', 'Bring a deck', t0 + interval '1 hour', t0 + interval '3 hours', 'public');
   select * into e from public.events where id = eid;
   ok := ok and v ->> 'outcome' = 'updated' and e.time_changed_at is not null
@@ -393,6 +393,124 @@ begin
   where ev.creator_id = u_appr;
   ok := n = 3;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B15 host auto-RSVP still added for RPC-created events (got ' || n || '/3)';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- C. Approximate location until you RSVP
+  -- =====================================================================
+
+  -- A public event by u_trusted. u_acq is a stranger to them (not connected);
+  -- f1 is connected to them but not going.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  v := public.create_event('Library cowork', null, '  Boise Library  ', 43.615, -116.2023, t0, null, 'public');
+  eid := (v ->> 'event_id')::uuid;
+
+  -- C1: a stranger sees the fuzzed point only.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_acq, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries s
+  where s.id = eid
+    and s.approx_latitude is not null and s.approx_longitude is not null
+    and s.exact_latitude is null and s.exact_longitude is null and s.location_name is null;
+  ok := v ->> 'outcome' = 'created' and n = 1;
+  select count(*) into n from public.event_locations where event_id = eid;
+  ok := ok and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C1 stranger: approx only; exact_*, location_name null; event_locations empty';
+  if not ok then fails := fails + 1; end if;
+
+  -- C2: after tapping Going, the exact spot and place name unlock.
+  insert into public.event_attendees (event_id, user_id) values (eid, u_acq);
+  select count(*) into n from public.event_summaries s
+  where s.id = eid and s.exact_latitude = 43.615 and s.exact_longitude = -116.2023
+    and s.location_name = 'Boise Library' and s.is_going;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C2 after RSVP: exact spot + trimmed place name visible';
+  if not ok then fails := fails + 1; end if;
+
+  -- C3: after un-RSVP, hidden again.
+  delete from public.event_attendees where event_id = eid and user_id = u_acq;
+  select count(*) into n from public.event_summaries s
+  where s.id = eid and s.exact_latitude is null and s.location_name is null and not s.is_going;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C3 after un-RSVP: exact spot hidden again';
+  if not ok then fails := fails + 1; end if;
+
+  -- C4: the host and an admin always see it; a connection who isn't going doesn't.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries s where s.id = eid and s.exact_latitude = 43.615;
+  ok := n = 1;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries s where s.id = eid and s.exact_latitude = 43.615;
+  ok := ok and n = 1;
+  perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries s where s.id = eid and s.exact_latitude is null;
+  ok := ok and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C4 host + admin see exact; a non-going connection does not';
+  if not ok then fails := fails + 1; end if;
+
+  -- C5: nobody can write event_locations directly (not even the host).
+  perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
+  update public.event_locations set latitude = 0, location_name = 'My house' where event_id = eid;
+  get diagnostics n = row_count;
+  ok := n = 0;
+  err := null;
+  begin
+    insert into public.event_locations (event_id, latitude, longitude) values (eid_conn, 0, 0);
+  exception when others then err := sqlstate;
+  end;
+  ok := ok and err = '42501';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C5 direct insert/update of event_locations refused';
+  if not ok then fails := fails + 1; end if;
+
+  -- C6: the fuzzed point is stored, not re-rolled on every read.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_acq, 'role', 'authenticated')::text, true);
+  select s.approx_latitude::text || ',' || s.approx_longitude::text into err
+  from public.event_summaries s where s.id = eid;
+  select count(*) into n from public.event_summaries s
+  where s.id = eid and s.approx_latitude::text || ',' || s.approx_longitude::text = err;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C6 approx point is stable across reads';
+  if not ok then fails := fails + 1; end if;
+  reset role;
+
+  -- C7: every event (including real ones backfilled by the migration) has an
+  -- exact row, and its fuzzed point is 150–350 m away (0.5 m float slack).
+  select count(*) into n
+  from public.events ev
+  left join public.event_locations l on l.event_id = ev.id
+  where l.event_id is null
+     or public._distance_m(ev.approx_latitude, ev.approx_longitude, l.latitude, l.longitude)
+        not between 149.5 and 350.5;
+  ok := n = 0;
+  select count(*) into n from public.events;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C7 all ' || n || ' events: has exact row, approx is 150–350 m away';
+  if not ok then fails := fails + 1; end if;
+
+  -- C8: 2,000 fuzzes of one spot: always in range, the whole range gets
+  -- used, and every direction shows up (each quadrant gets a fair share).
+  select
+    min(d) >= 149.5 and max(d) <= 350.5 and min(d) < 160 and max(d) > 340
+    and least(
+      count(*) filter (where f.lat > 43.615 and f.lng > -116.2023),
+      count(*) filter (where f.lat > 43.615 and f.lng <= -116.2023),
+      count(*) filter (where f.lat <= 43.615 and f.lng > -116.2023),
+      count(*) filter (where f.lat <= 43.615 and f.lng <= -116.2023)
+    ) > 400
+  into ok
+  from generate_series(1, 2000) g
+  -- "+ 0 * g" ties each call to its row; with constant arguments Postgres
+  -- runs the function once and reuses the answer for all 2,000 rows.
+  cross join lateral public._fuzz_point(43.615 + 0 * g, -116.2023) f
+  cross join lateral (select public._distance_m(43.615, -116.2023, f.lat, f.lng) as d) dd;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C8 2,000 fuzzes: 150–350 m, full range, all directions';
+  if not ok then fails := fails + 1; end if;
+
+  -- C9: the old exact columns are gone from events.
+  select count(*) into n from information_schema.columns
+  where table_schema = 'public' and table_name = 'events'
+    and column_name in ('latitude', 'longitude', 'location_name');
+  ok := n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C9 events.latitude / longitude / location_name dropped';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.
