@@ -7,9 +7,9 @@
 --
 --   npx supabase db query --linked -f supabase/tests/legal_compliance.sql
 --
--- Sections: A = consent, L = map location defaults, R = retention sweep.
--- (Phases 3–4 add B = blocking, C = reports + admin, D = deletion cascade,
--- E = content filter.)
+-- Sections: A = consent, L = map location defaults, R = retention sweep,
+-- B = blocking, C = reports + admin + suspension, E = content filter.
+-- (Phase 4 adds D = deletion cascade.)
 
 do $tests$
 declare
@@ -21,6 +21,28 @@ declare
   ua_noage uuid := gen_random_uuid();  -- signed up without the 18+ flag
   ua_stale uuid := gen_random_uuid();  -- signed up with an old terms version
   v_current text := public._current_terms_version();
+  -- Blocking
+  bA uuid := gen_random_uuid();   -- blocks bB
+  bB uuid := gen_random_uuid();   -- gets blocked
+  bC uuid := gen_random_uuid();   -- connected to both, unaffected
+  eA uuid;                        -- hosted by bA, bB going
+  eB uuid;                        -- hosted by bB, bA going
+  conv uuid;
+  tok text;
+  -- Reports, suspension, filter
+  rR uuid := gen_random_uuid();   -- reporter, in a chat with rT
+  rT uuid := gen_random_uuid();   -- reported, later suspended
+  rOut uuid := gen_random_uuid(); -- not in the chat
+  rU uuid := gen_random_uuid();   -- reported as underage
+  adm uuid := gen_random_uuid();  -- admin
+  mT uuid;                        -- message from rT to rR
+  mR uuid;                        -- message from rR to rT
+  eT uuid;                        -- upcoming event hosted by rT
+  rep uuid;
+  x uuid;
+  v2 jsonb;
+  succ int;
+  i int;
 
   report text := '';
   fails int := 0;
@@ -340,6 +362,429 @@ begin
     where jobname = 'bolas-retention-sweep' and schedule = '* * * * *' and active
   );
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  R10 cron job bolas-retention-sweep scheduled every minute';
+  if not ok then fails := fails + 1; end if;
+
+  -- ---------- setup for B / C / E (as admin) ----------
+  insert into auth.users (id, email, aud, role, created_at)
+  select id, id || '@test.bolas.invalid', 'authenticated', 'authenticated', now() - interval '30 days'
+  from unnest(array[bA, bB, bC, rR, rT, rOut, rU, adm]) as id;
+
+  update public.profiles
+  set username = 'lc_' || left(replace(id::text, '-', ''), 12), bio = 'Original bio'
+  where id in (bA, bB, bC, rR, rT, rOut, rU, adm);
+
+  insert into public.app_admins (user_id) values (adm);
+
+  -- =====================================================================
+  -- B. Blocking
+  -- =====================================================================
+
+  perform public._connect_in_person(bA, bB, 'qr', null);
+  insert into public.connections (requester_id, addressee_id, status) values
+    (bC, bA, 'accepted'), (bC, bB, 'accepted');
+
+  -- Each hosts an upcoming public event; the other is going.
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (bA, 'LC bA event', 43.6, -116.2, now() + interval '1 day', 'public')
+  returning id into eA;
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (bB, 'LC bB event', 43.6, -116.2, now() + interval '1 day', 'public')
+  returning id into eB;
+  insert into public.event_attendees (event_id, user_id) values (eA, bB), (eB, bA);
+
+  -- A chat between them.
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  conv := public.get_or_create_direct_conversation(bB);
+  insert into public.messages (conversation_id, sender_id, body) values (conv, bB, 'hey');
+
+  -- bA blocks bB.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  v := public.block_user(bB);
+  reset role;
+  ok := v ->> 'outcome' = 'blocked';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B1 block_user -> blocked';
+  if not ok then fails := fails + 1; end if;
+
+  -- B2: their connection is gone; RSVPs both ways removed and counts updated.
+  ok := not exists (
+          select 1 from public.connections
+          where (requester_id = bA and addressee_id = bB) or (requester_id = bB and addressee_id = bA))
+        and not exists (select 1 from public.event_attendees where event_id = eA and user_id = bB)
+        and not exists (select 1 from public.event_attendees where event_id = eB and user_id = bA)
+        and (select going_count from public.events where id = eA) = 1
+        and (select going_count from public.events where id = eB) = 1
+        and exists (select 1 from public.connections where requester_id = bC and addressee_id = bA);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B2 connection deleted, RSVPs removed both ways, other connections kept';
+  if not ok then fails := fails + 1; end if;
+
+  -- B3: neither can see the other's profile; a third person sees both.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = bA;
+  ok := n = 0;
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = bB;
+  ok := ok and n = 0;
+  perform set_config('request.jwt.claims', json_build_object('sub', bC, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id in (bA, bB);
+  ok := ok and n = 2;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B3 profiles hidden both ways, visible to others';
+  if not ok then fails := fails + 1; end if;
+
+  -- B4: connection requests refused both ways.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  err := null;
+  begin insert into public.connections (requester_id, addressee_id) values (bB, bA);
+  exception when others then err := sqlstate; end;
+  ok := err = '42501';
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  err := null;
+  begin insert into public.connections (requester_id, addressee_id) values (bA, bB);
+  exception when others then err := sqlstate; end;
+  ok := ok and err = '42501';
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B4 connection requests refused both ways';
+  if not ok then fails := fails + 1; end if;
+
+  -- B5: the chat is hidden from both, and nobody can send into it or start a new one.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.conversations where id = conv;
+  ok := n = 0;
+  select count(*) into n from public.messages where conversation_id = conv;
+  ok := ok and n = 0;
+  err := null;
+  begin insert into public.messages (conversation_id, sender_id, body) values (conv, bB, 'still there?');
+  exception when others then err := sqlstate; end;
+  ok := ok and err = '42501';
+  err := null;
+  begin perform public.get_or_create_direct_conversation(bA); exception when others then err := sqlerrm; end;
+  ok := ok and err = 'not connected';
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.messages where conversation_id = conv;
+  ok := ok and n = 0;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B5 chat hidden both ways; send and new chat refused';
+  if not ok then fails := fails + 1; end if;
+
+  -- B6: in person: direct, QR (code stays unused, no profile leaked), and tap.
+  v := public._connect_in_person(bB, bA, 'qr', null);
+  ok := v ->> 'outcome' = 'unavailable';
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  tok := public.create_connect_token() ->> 'token';
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  v := public.redeem_connect_token(tok, null);
+  ok := ok and v = jsonb_build_object('outcome', 'unavailable');
+  -- Taps far from any other test data.
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  v2 := public.submit_bump(10.0, 10.0, 10, null);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  v := public.submit_bump(10.0, 10.0, 10, null);
+  reset role;
+  ok := ok and v2 ->> 'status' = 'waiting' and v ->> 'status' = 'waiting'
+        and exists (select 1 from public.connect_tokens where token = tok and used_at is null);
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B6 in-person connect / QR / tap -> unavailable, nothing revealed (' || v::text || ')';
+  if not ok then fails := fails + 1; end if;
+
+  -- B7: events hidden both ways, and the blocked person can't RSVP again.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eA;
+  ok := n = 0;
+  err := null;
+  begin insert into public.event_attendees (event_id, user_id) values (eA, bB);
+  exception when others then err := sqlstate; end;
+  ok := ok and err = '42501';
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id = eB;
+  ok := ok and n = 0;
+  perform set_config('request.jwt.claims', json_build_object('sub', bC, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.event_summaries where id in (eA, eB);
+  ok := ok and n = 2;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B7 events hidden both ways, RSVP refused, others still see both';
+  if not ok then fails := fails + 1; end if;
+
+  -- B8: only the blocker sees the block.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_my_blocked_users() b where b.user_id = bB;
+  ok := n = 1;
+  select count(*) into n from public.user_blocks;
+  ok := ok and n = 1;
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_my_blocked_users();
+  ok := ok and n = 0;
+  select count(*) into n from public.user_blocks;
+  ok := ok and n = 0;
+  -- ...and nobody can write blocks directly.
+  err := null;
+  begin insert into public.user_blocks (blocker_id, blocked_id) values (bB, bC);
+  exception when others then err := sqlstate; end;
+  ok := ok and err = '42501';
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B8 blocker sees the block, blocked person sees nothing, no direct writes';
+  if not ok then fails := fails + 1; end if;
+
+  -- B9: mutuals and connection counts don't leak across a block.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_mutuals(bA);
+  ok := n = 0 and public.get_connection_count(bA) = 0;
+  -- A third person still gets bA's real count (bC only; bB's connection is gone).
+  perform set_config('request.jwt.claims', json_build_object('sub', bC, 'role', 'authenticated')::text, true);
+  ok := ok and public.get_connection_count(bA) = 1;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B9 mutuals/count hidden from the blocked person, normal for others';
+  if not ok then fails := fails + 1; end if;
+
+  -- B10: unblock restores visibility, not the connection.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
+  v := public.unblock_user(bB);
+  perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = bA;
+  reset role;
+  ok := v ->> 'outcome' = 'unblocked' and n = 1
+        and not exists (
+          select 1 from public.connections
+          where (requester_id = bA and addressee_id = bB) or (requester_id = bB and addressee_id = bA));
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B10 unblock: visible again, connection not restored';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- C. Reports, admin, suspension
+  -- =====================================================================
+
+  insert into public.connections (requester_id, addressee_id, status) values (rR, rT, 'accepted');
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  conv := public.get_or_create_direct_conversation(rT);
+  insert into public.messages (conversation_id, sender_id, body) values (conv, rT, 'send me $500')
+  returning id into mT;
+  insert into public.messages (conversation_id, sender_id, body) values (conv, rR, 'no thanks')
+  returning id into mR;
+
+  perform set_config('role', 'authenticated', true);
+
+  -- C1: can't report yourself.
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  v := public.report_user(rR, 'profile', null, 'spam', null);
+  ok := v ->> 'outcome' = 'self';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C1 report yourself -> self';
+  if not ok then fails := fails + 1; end if;
+
+  -- C2: can't report a message you're not part of, or pin someone else's message on them.
+  perform set_config('request.jwt.claims', json_build_object('sub', rOut, 'role', 'authenticated')::text, true);
+  v := public.report_user(rT, 'message', mT, 'scam_or_selling', null);
+  ok := v ->> 'outcome' = 'not_found';
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  v := public.report_user(rT, 'message', mR, 'scam_or_selling', null);
+  ok := ok and v ->> 'outcome' = 'not_found';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C2 message report by outsider / wrong sender -> not_found';
+  if not ok then fails := fails + 1; end if;
+
+  -- C3: a real message report stores a server-made snapshot, which doesn't
+  -- change when the reported person edits their profile afterwards.
+  v := public.report_user(rT, 'message', mT, 'scam_or_selling', 'asked for money');
+  reset role;
+  update public.profiles set bio = 'Edited after the report' where id = rT;
+  select * into rec from public.user_reports where reporter_id = rR and context = 'message';
+  ok := v ->> 'outcome' = 'reported'
+        and rec.snapshot -> 'message' ->> 'body' = 'send me $500'
+        and rec.snapshot ->> 'bio' = 'Original bio'
+        and rec.snapshot ->> 'username' = (select username from public.profiles where id = rT)
+        and rec.context_id = mT and rec.status = 'open';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C3 message report: server snapshot kept as it was at report time';
+  if not ok then fails := fails + 1; end if;
+
+  -- C4: the 11th report in a day -> rate_limited (1 already filed above).
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  succ := 0;
+  n := 0;
+  for i in 1..10 loop
+    v := public.report_user(rT, 'profile', null, 'spam', null);
+    if v ->> 'outcome' = 'reported' then succ := succ + 1; end if;
+    if v ->> 'outcome' = 'rate_limited' then n := n + 1; end if;
+  end loop;
+  reset role;
+  ok := succ = 9 and n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C4 11th report in 24h -> rate_limited (' || succ || ' more reported, ' || n || ' limited)';
+  if not ok then fails := fails + 1; end if;
+
+  -- C5: underage report; reports table unreadable directly.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rOut, 'role', 'authenticated')::text, true);
+  v := public.report_user(rU, 'profile', null, 'underage', 'says they are 16');
+  select count(*) into n from public.user_reports;
+  reset role;
+  ok := v ->> 'outcome' = 'reported' and n = 0;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C5 underage report filed; user_reports unreadable by users';
+  if not ok then fails := fails + 1; end if;
+
+  -- C6: non-admins are refused by every admin RPC.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  n := 0;
+  begin perform public.admin_list_user_reports(); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.admin_resolve_user_report(gen_random_uuid(), 'dismissed', null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.admin_set_account_status(rT, 'suspended', null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  reset role;
+  ok := n = 3;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C6 non-admin refused by all admin RPCs (' || n || '/3)';
+  if not ok then fails := fails + 1; end if;
+
+  -- C7: the admin list groups by person, underage first.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  select * into rec from public.admin_list_user_reports() l
+  where l.reported_user_id in (rU, rT)
+  order by l.has_underage desc, l.latest_report_at desc
+  limit 1;
+  ok := rec.reported_user_id = rU and rec.has_underage;
+  select l.report_count into n from public.admin_list_user_reports() l where l.reported_user_id = rT;
+  ok := ok and n = 10;
+  -- The whole list's first row with our users is the underage one.
+  select l.reported_user_id into x from public.admin_list_user_reports() l
+  where l.reported_user_id in (rU, rT) limit 1;
+  ok := ok and x = rU;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C7 admin list: grouped (rT has 10), underage first';
+  if not ok then fails := fails + 1; end if;
+
+  -- C8: resolving a report updates it and logs it.
+  select id into rep from public.user_reports where reported_user_id = rU;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  v := public.admin_resolve_user_report(rep, 'dismissed', 'looked fine');
+  reset role;
+  ok := v ->> 'outcome' = 'updated'
+        and (select status from public.user_reports where id = rep) = 'dismissed'
+        and exists (select 1 from public.moderation_log where user_id = rU and action = 'user_report_dismissed');
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C8 admin_resolve_user_report -> dismissed + logged';
+  if not ok then fails := fails + 1; end if;
+
+  -- C9: suspending hides them, removes their upcoming event, actions their reports.
+  insert into public.events (creator_id, title, approx_latitude, approx_longitude, starts_at, visibility)
+  values (rT, 'LC rT event', 43.6, -116.2, now() + interval '1 day', 'public')
+  returning id into eT;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  v := public.admin_set_account_status(rT, 'suspended', 'scam messages');
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = rT;
+  reset role;
+  ok := v ->> 'outcome' = 'updated' and (v ->> 'events_removed')::int = 1 and n = 0
+        and (select status from public.events where id = eT) = 'removed'
+        and not exists (select 1 from public.user_reports where reported_user_id = rT and status = 'open');
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C9 suspend: hidden, upcoming event removed, reports actioned';
+  if not ok then fails := fails + 1; end if;
+
+  -- C10: a suspended user can't write anything, but can read their own
+  -- restriction and their own profile.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rT, 'role', 'authenticated')::text, true);
+  n := 0;
+  begin insert into public.connections (requester_id, addressee_id) values (rT, rOut);
+  exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin insert into public.messages (conversation_id, sender_id, body) values (conv, rT, 'hello?');
+  exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin insert into public.event_attendees (event_id, user_id) values (eA, rT);
+  exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  if public.report_user(rOut, 'profile', null, 'spam', null) ->> 'outcome' = 'not_allowed' then n := n + 1; end if;
+  if public.create_event('x', null, null, 43.6, -116.2, now() + interval '1 day', null, 'connections') ->> 'outcome' = 'not_allowed' then n := n + 1; end if;
+  if (select count(*) from public.account_restrictions where user_id = rT) = 1 then n := n + 1; end if;
+  if (select count(*) from public.profiles where id = rT) = 1 then n := n + 1; end if;
+  reset role;
+  ok := n = 7;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C10 suspended: request/message/RSVP/report/event refused; can read own restriction + profile (' || n || '/7)';
+  if not ok then fails := fails + 1; end if;
+
+  -- C11: lifting the suspension makes them visible again.
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  v := public.admin_set_account_status(rT, null, null);
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = rT;
+  reset role;
+  ok := v ->> 'outcome' = 'updated' and n = 1
+        and exists (select 1 from public.moderation_log where user_id = rT and action = 'account_restored');
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C11 lift suspension: visible again, logged';
+  if not ok then fails := fails + 1; end if;
+
+  -- C12: signed-out callers are refused.
+  perform set_config('role', 'anon', true);
+  n := 0;
+  begin perform public.report_user(rT, 'profile', null, 'spam', null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.block_user(rT); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  reset role;
+  ok := n = 2;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C12 anon refused by report_user and block_user';
+  if not ok then fails := fails + 1; end if;
+
+  -- =====================================================================
+  -- E. Content filter
+  -- =====================================================================
+
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rOut, 'role', 'authenticated')::text, true);
+
+  -- E1: usernames, including glued / padded evasions.
+  n := 0;
+  begin update public.profiles set username = 'fo_rex99' where id = rOut;
+  exception when others then if sqlstate = 'P0001' and sqlerrm = 'blocked_content' then n := n + 1; end if; end;
+  begin update public.profiles set username = 'ForexKing' where id = rOut;
+  exception when others then if sqlstate = 'P0001' and sqlerrm = 'blocked_content' then n := n + 1; end if; end;
+  begin update public.profiles set username = 'cash_app_4u' where id = rOut;
+  exception when others then if sqlstate = 'P0001' and sqlerrm = 'blocked_content' then n := n + 1; end if; end;
+  ok := n = 3;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E1 usernames fo_rex99 / ForexKing / cash_app_4u rejected (' || n || '/3)';
+  if not ok then fails := fails + 1; end if;
+
+  -- E2: full name and bio (whole words).
+  n := 0;
+  begin update public.profiles set full_name = 'Forex Trader' where id = rOut;
+  exception when others then if sqlstate = 'P0001' then n := n + 1; end if; end;
+  begin update public.profiles set bio = 'DM me for passive income' where id = rOut;
+  exception when others then if sqlstate = 'P0001' then n := n + 1; end if; end;
+  ok := n = 2;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E2 full name / bio with a blocked phrase rejected (' || n || '/2)';
+  if not ok then fails := fails + 1; end if;
+
+  -- E3: normal text passes (including 'dm meetup', which isn't 'dm me').
+  update public.profiles
+  set username = 'coffee_builder_1', full_name = 'Sam Rivera', bio = 'Building a coffee app. Join our dm meetup!'
+  where id = rOut;
+  get diagnostics n = row_count;
+  ok := n = 1;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E3 normal username / name / bio accepted';
+  if not ok then fails := fails + 1; end if;
+
+  -- E4: events use the same shared list.
+  v := public.create_event('Forex night', null, null, 43.6, -116.2, now() + interval '1 day', null, 'connections');
+  ok := v ->> 'outcome' = 'blocked_content';
+  -- E5: the list itself isn't readable by users.
+  select count(*) into n from public.blocked_terms;
+  ok := ok and n = 0;
+  reset role;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E4/E5 events filtered by the shared list; list unreadable by users';
+  if not ok then fails := fails + 1; end if;
+
+  -- E6: a term added later doesn't stop someone editing other fields.
+  update public.profiles set bio = 'I love zzlctestterm' where id = rR;
+  insert into public.blocked_terms (term) values ('zzlctestterm');
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
+  err := null;
+  begin update public.profiles set city = 'Boise, ID', bio = 'I love zzlctestterm' where id = rR;
+  exception when others then err := sqlstate; end;
+  reset role;
+  ok := err is null and (select city from public.profiles where id = rR) = 'Boise, ID';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E6 unchanged old bio with a new term doesn''t block other edits';
   if not ok then fails := fails + 1; end if;
 
   -- Always roll back: nothing from this run is kept.

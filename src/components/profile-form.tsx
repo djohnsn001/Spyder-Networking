@@ -142,6 +142,17 @@ export function ProfileForm({
           setErrorMessage('That username is already taken. Try another one.');
           return;
         }
+        // The server's content filter (details names the field).
+        if (updateError.code === 'P0001' && updateError.message === 'blocked_content') {
+          const field =
+            updateError.details === 'username'
+              ? 'username'
+              : updateError.details === 'full_name'
+                ? 'name'
+                : 'bio';
+          setErrorMessage(`Your ${field} includes something we don't allow. Try different wording.`);
+          return;
+        }
         throw updateError;
       }
 

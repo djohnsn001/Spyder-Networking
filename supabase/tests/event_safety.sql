@@ -198,7 +198,7 @@ begin
   n := 0;
   select n + count(*) into n from public.app_admins;
   select n + count(*) into n from public.event_creation_log;
-  select n + count(*) into n from public.event_blocked_terms;
+  select n + count(*) into n from public.blocked_terms;   -- was event_blocked_terms (merged in 20260928020000)
   select n + count(*) into n from public.host_permissions;   -- u_trusted has no row
   begin perform public._hosting_status(u_new); n := n + 100; exception when others then null; end;
   begin perform public._event_rules(); n := n + 100; exception when others then null; end;
