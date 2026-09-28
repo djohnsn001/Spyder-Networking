@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 
 import { AccentColor } from '@/constants/theme';
+import { hasExactLocation } from '@/lib/events';
 import type { EventSummary } from '@/lib/types';
 
 const TILE_WIDTH = 42;
@@ -34,7 +35,11 @@ export function EventMarker({ event, onPress }: { event: EventSummary; onPress: 
 
   return (
     <Marker
-      coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+      coordinate={
+        hasExactLocation(event)
+          ? { latitude: event.exact_latitude, longitude: event.exact_longitude }
+          : { latitude: event.approx_latitude, longitude: event.approx_longitude }
+      }
       anchor={{ x: 0.5, y: 1 }}
       zIndex={10}
       tracksViewChanges={tracksViewChanges}

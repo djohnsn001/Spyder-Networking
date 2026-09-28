@@ -20,10 +20,15 @@ import {
   EVENT_DESCRIPTION_LIMIT,
   EVENT_LOCATION_NAME_LIMIT,
   EVENT_TITLE_LIMIT,
+  publicLockHint,
+  saveEventErrorMessage,
   validateEventInput,
   type EventInput,
   type EventInputErrors,
+  type HostingStatus,
+  type SaveEventResult,
 } from '@/lib/events';
+import { friendlyRpcError } from '@/lib/rpc';
 import type { EventVisibility } from '@/lib/types';
 
 const DEFAULT_DURATION_MS = 2 * 60 * 60 * 1000;
@@ -43,8 +48,14 @@ type EventFormProps = {
   initialValues: EventInput;
   // On for creating, off for editing — see validateEventInput.
   requireFutureStart: boolean;
-  // Throws on failure; the form shows the message.
-  onSubmit: (input: EventInput) => Promise<void>;
+  // From get_my_hosting_status. null if it couldn't load: Public then stays
+  // selectable and the server has the final say.
+  hosting: HostingStatus | null;
+  // Editing: the place name can't change after posting, so show it read-only.
+  locationLocked: boolean;
+  // Returns the server's answer; the screen navigates away on 'saved', the
+  // form explains anything else. Throws only for network trouble.
+  onSubmit: (input: EventInput) => Promise<SaveEventResult>;
 };
 
 // Shared by /event/new and /event/[id]/edit. Owns field state and
@@ -54,9 +65,14 @@ export function EventForm({
   submitLabel,
   initialValues,
   requireFutureStart,
+  hosting,
+  locationLocked,
   onSubmit,
 }: EventFormProps) {
   const theme = useTheme();
+  // The server can report a newer status than the one we loaded (e.g. the
+  // public_locked answer), so keep our own copy.
+  const [hostingNow, setHostingNow] = useState(hosting);
 
   const [title, setTitle] = useState(initialValues.title);
   const [description, setDescription] = useState(initialValues.description);
@@ -71,6 +87,14 @@ export function EventForm({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // An event that's already public stays editable as public even if the
+  // host's trust has since lapsed; the server allows keeping it.
+  const publicLocked =
+    hostingNow != null && !hostingNow.canHostPublic && initialValues.visibility !== 'public';
+  const lockHint = publicLocked && hostingNow ? publicLockHint(hostingNow) : null;
+  const needsInPerson =
+    publicLocked && hostingNow != null && hostingNow.inPersonCount < hostingNow.neededInPerson;
+
   const inputStyle = [styles.input, { color: theme.text, backgroundColor: theme.backgroundSelected }];
 
   async function handleSubmit() {
@@ -82,10 +106,23 @@ export function EventForm({
 
     setIsSubmitting(true);
     try {
-      await onSubmit(input);
+      const result = await onSubmit(input);
+      if (result.kind === 'saved') return;
+      const message = saveEventErrorMessage(result);
+      if (
+        result.kind === 'invalid' &&
+        result.field !== 'location' &&
+        result.field !== 'visibility'
+      ) {
+        setErrors({ [result.field]: message });
+      } else {
+        if (result.kind === 'public_locked') setHostingNow(result.hosting);
+        setSubmitError(message);
+      }
     } catch (error) {
-      console.error('Failed to save event', error);
-      setSubmitError("Couldn't save your event. Check your connection and try again.");
+      if (__DEV__) console.warn('Failed to save event', error);
+      setSubmitError(friendlyRpcError(error));
+    } finally {
       setIsSubmitting(false);
     }
   }
@@ -156,17 +193,34 @@ export function EventForm({
 
           <View style={styles.field}>
             <ThemedText type="smallBold">Location name</ThemedText>
-            <TextInput
-              value={locationName}
-              onChangeText={(text) => setLocationName(text.slice(0, EVENT_LOCATION_NAME_LIMIT))}
-              placeholder="Boise State Library"
-              placeholderTextColor={theme.textSecondary}
-              style={inputStyle}
-              accessibilityLabel="Location name"
-            />
-            <ThemedText type="small" themeColor="textSecondary">
-              Events show the exact spot you picked — use a public place.
-            </ThemedText>
+            {locationLocked ? (
+              <>
+                <View style={[styles.input, { backgroundColor: theme.backgroundSelected }]}>
+                  <ThemedText type="default" themeColor={locationName ? 'text' : 'textSecondary'}>
+                    {locationName || 'No place name'}
+                  </ThemedText>
+                </View>
+                <ThemedText type="small" themeColor="textSecondary">
+                  The place can't change after posting. To move the event, delete it and drop a
+                  new pin.
+                </ThemedText>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  value={locationName}
+                  onChangeText={(text) => setLocationName(text.slice(0, EVENT_LOCATION_NAME_LIMIT))}
+                  placeholder="Boise State Library"
+                  placeholderTextColor={theme.textSecondary}
+                  style={inputStyle}
+                  accessibilityLabel="Location name"
+                />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Pick a public place like a café, library, or coworking space. People see the
+                  general area until they tap Going.
+                </ThemedText>
+              </>
+            )}
             {renderError(errors.locationName)}
           </View>
 
@@ -215,22 +269,26 @@ export function EventForm({
             <View style={styles.pillRow}>
               {VisibilityOptions.map((option) => {
                 const selected = visibility === option.value;
+                const locked = option.value === 'public' && publicLocked;
                 return (
                   <Pressable
                     key={option.value}
                     onPress={() => setVisibility(option.value)}
+                    disabled={locked}
                     accessibilityRole="button"
-                    accessibilityState={{ selected }}
+                    accessibilityState={{ selected, disabled: locked }}
+                    accessibilityLabel={locked ? `${option.label} (locked)` : option.label}
                     style={({ pressed }) => [
                       styles.pill,
                       { backgroundColor: selected ? AccentColor : theme.backgroundSelected },
+                      locked && styles.pillLocked,
                       pressed && styles.pressed,
                     ]}>
                     <ThemedText
                       type="small"
                       style={selected ? styles.pillLabelSelected : undefined}
-                      themeColor={selected ? undefined : 'text'}>
-                      {option.label}
+                      themeColor={selected ? undefined : locked ? 'textSecondary' : 'text'}>
+                      {locked ? `🔒 ${option.label}` : option.label}
                     </ThemedText>
                   </Pressable>
                 );
@@ -239,6 +297,21 @@ export function EventForm({
             <ThemedText type="small" themeColor="textSecondary">
               {VisibilityOptions.find((option) => option.value === visibility)?.hint}
             </ThemedText>
+            {lockHint ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                {lockHint}
+                {needsInPerson ? (
+                  <ThemedText
+                    type="smallBold"
+                    style={styles.linkText}
+                    onPress={() => router.push('/connect')}
+                    accessibilityRole="link">
+                    {' '}
+                    Meet people in person →
+                  </ThemedText>
+                ) : null}
+              </ThemedText>
+            ) : null}
           </View>
 
           {submitError ? (
@@ -318,6 +391,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.five,
+  },
+  pillLocked: {
+    opacity: 0.6,
   },
   pillLabelSelected: {
     color: '#fdfbf7',

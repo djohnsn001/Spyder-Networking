@@ -79,6 +79,11 @@ export type Message = {
 
 export type EventVisibility = 'public' | 'connections';
 
+// active = shown normally; hidden = auto-hidden by reports, waiting for an
+// admin; removed = taken down by an admin. Only the host (and admins) ever
+// see hidden/removed events.
+export type EventStatus = 'active' | 'hidden' | 'removed';
+
 // One row of the event_summaries view: the event plus what the map and
 // detail sheet need to show about it.
 export type EventSummary = {
@@ -86,18 +91,37 @@ export type EventSummary = {
   creator_id: string;
   title: string;
   description: string | null;
-  latitude: number;
-  longitude: number;
+  // The real spot moved 150–350 m, fixed at creation. Always present.
+  approx_latitude: number;
+  approx_longitude: number;
+  // The real spot and place name: null unless you're the host, going, or
+  // an admin (RLS on event_locations).
+  exact_latitude: number | null;
+  exact_longitude: number | null;
   location_name: string | null;
   starts_at: string;
   ends_at: string | null;
   visibility: EventVisibility;
+  status: EventStatus;
+  // Set when the host moved the start/end time after creating it.
+  time_changed_at: string | null;
   created_at: string;
   updated_at: string;
   effective_ends_at: string;
   creator_username: string | null;
   creator_full_name: string | null;
   creator_avatar_url: string | null;
-  attendee_count: number;
+  going_count: number;
   is_going: boolean;
+};
+
+// One row of get_event_attendees(): the host sees everyone; everyone else
+// sees themselves plus their own connections who are going.
+export type EventAttendee = {
+  user_id: string;
+  username: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_connection: boolean;
+  is_host: boolean;
 };

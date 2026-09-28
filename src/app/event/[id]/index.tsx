@@ -62,14 +62,26 @@ export default function EventDetailScreen() {
     setEvent({
       ...event,
       is_going: nextGoing,
-      attendee_count: event.attendee_count + (nextGoing ? 1 : -1),
+      going_count: event.going_count + (nextGoing ? 1 : -1),
     });
     try {
-      await setGoing(event.id, myId, nextGoing);
+      const result = await setGoing(event.id, myId, nextGoing);
+      if (result === 'rate_limited') {
+        setEvent(previous);
+        setActionError("You've RSVP'd to a lot of events today. Try again tomorrow.");
+      } else if (result === 'unavailable') {
+        setEvent(previous);
+        setActionError("This event isn't taking RSVPs anymore.");
+      } else {
+        // Refetch: going unlocks the exact spot and place name (and
+        // un-going hides them again), which only the server knows.
+        const fresh = await fetchEvent(event.id).catch(() => null);
+        if (fresh) setEvent(fresh);
+      }
     } catch (error) {
-      console.error('Failed to update RSVP', error);
+      if (__DEV__) console.warn('Failed to update RSVP', error);
       setEvent(previous);
-      setActionError("Couldn't update your RSVP. Try again.");
+      setActionError("Couldn't update your RSVP. Check your connection and try again.");
     } finally {
       setIsUpdatingRsvp(false);
     }
@@ -125,7 +137,7 @@ export default function EventDetailScreen() {
   const isCreator = event.creator_id === myId;
   const creatorName = event.creator_full_name || event.creator_username || 'Someone';
   const hasEnded = new Date(event.effective_ends_at).getTime() <= Date.now();
-  const goingLabel = event.attendee_count === 1 ? '1 going' : `${event.attendee_count} going`;
+  const goingLabel = event.going_count === 1 ? '1 going' : `${event.going_count} going`;
 
   return (
     // iOS already pads a fitToContents sheet for the home indicator.
