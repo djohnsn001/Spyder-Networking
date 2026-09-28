@@ -10,16 +10,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ConsentCheckbox } from '@/components/legal/consent-checkbox';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, ErrorColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { LEGAL } from '@/lib/legal/config';
 import { supabase } from '@/lib/supabase';
 
 export default function SignUpScreen() {
   const theme = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Starts unchecked, always.
+  const [agreed, setAgreed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -31,12 +35,16 @@ export default function SignUpScreen() {
       setErrorMessage('Enter an email and password.');
       return;
     }
+    if (!agreed) return;
 
     setIsSubmitting(true);
     try {
       const { data, error } = await supabase.auth.signUp({
         email: trimmedEmail,
         password,
+        // The sign-up trigger records consent from this, with the server's
+        // time (migration 20260928010000_legal_consent.sql).
+        options: { data: { terms_version: LEGAL.TERMS_VERSION, age_confirmed: true } },
       });
       if (error) throw error;
 
@@ -96,6 +104,8 @@ export default function SignUpScreen() {
               ]}
             />
 
+            <ConsentCheckbox checked={agreed} onChange={setAgreed} disabled={isSubmitting} />
+
             {errorMessage ? (
               <ThemedText type="small" style={styles.errorText}>
                 {errorMessage}
@@ -104,12 +114,13 @@ export default function SignUpScreen() {
 
             <Pressable
               onPress={handleSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !agreed}
               accessibilityRole="button"
               accessibilityLabel="Sign up"
+              accessibilityState={{ disabled: isSubmitting || !agreed }}
               style={({ pressed }) => [
                 styles.button,
-                { backgroundColor: AccentColor, opacity: isSubmitting ? 0.7 : 1 },
+                { backgroundColor: AccentColor, opacity: isSubmitting || !agreed ? 0.5 : 1 },
                 pressed && styles.buttonPressed,
               ]}>
               {isSubmitting ? (

@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
@@ -10,6 +11,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
 import { getIsAdmin } from '@/lib/events';
+import { contactSupport, LEGAL, openLegalUrl } from '@/lib/legal/config';
 import { setLocationSharing } from '@/lib/map';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
@@ -24,7 +26,6 @@ export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
   const theme = useTheme();
   const { preference, setPreference } = useThemePreference();
-  const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
   const [isUpdatingLocationSharing, setIsUpdatingLocationSharing] = useState(false);
   // Only the team (app_admins) sees the Admin row. The admin screen and every
   // admin RPC check again on their own.
@@ -35,23 +36,6 @@ export default function SettingsScreen() {
       .then(setIsAdmin)
       .catch(() => setIsAdmin(false));
   }, []);
-
-  async function handleToggleNotifications(value: boolean) {
-    if (!session) return;
-    setIsUpdatingNotifications(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ notifications_enabled: value })
-        .eq('id', session.user.id);
-      if (error) throw error;
-      await refreshProfile();
-    } catch (error) {
-      console.error('Failed to update notification preference', error);
-    } finally {
-      setIsUpdatingNotifications(false);
-    }
-  }
 
   async function handleToggleLocationSharing(value: boolean) {
     if (!session) return;
@@ -96,6 +80,19 @@ export default function SettingsScreen() {
                 </ThemedText>
               </Pressable>
             ) : null}
+            {/* Apple requires deleting an account to be easy to find. */}
+            <Pressable
+              onPress={() => router.push('/delete-account')}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+              <ThemedText type="default" style={styles.logoutLabel}>
+                Delete account
+              </ThemedText>
+              <ThemedText type="default" themeColor="textSecondary">
+                ›
+              </ThemedText>
+            </Pressable>
           </ThemedView>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
@@ -140,21 +137,9 @@ export default function SettingsScreen() {
             Preferences
           </ThemedText>
           <ThemedView type="backgroundElement" style={styles.group}>
-            <View style={styles.row}>
-              <View style={styles.rowTextCol}>
-                <ThemedText type="default">Notifications</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Connection requests and updates
-                </ThemedText>
-              </View>
-              <Switch
-                value={profile?.notifications_enabled ?? true}
-                onValueChange={handleToggleNotifications}
-                disabled={isUpdatingNotifications}
-                trackColor={{ true: AccentColor }}
-              />
-            </View>
-
+            {/* No Notifications toggle until push notifications exist
+                (data-inventory flag M6): a switch that does nothing would be
+                a promise the app doesn't keep. */}
             <View style={styles.row}>
               <View style={styles.rowTextCol}>
                 <ThemedText type="default">Show me on the map</ThemedText>
@@ -183,6 +168,21 @@ export default function SettingsScreen() {
             </View>
           </ThemedView>
 
+          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+            Legal
+          </ThemedText>
+          <ThemedView type="backgroundElement" style={styles.group}>
+            <LinkRow label="Terms of Service" onPress={() => openLegalUrl(LEGAL.TERMS_URL)} />
+            <LinkRow label="Privacy Policy" onPress={() => openLegalUrl(LEGAL.PRIVACY_URL)} />
+            <LinkRow
+              label="Community Guidelines"
+              onPress={() => openLegalUrl(LEGAL.GUIDELINES_URL)}
+            />
+            <LinkRow label="Safety Tips" onPress={() => openLegalUrl(LEGAL.SAFETY_URL)} />
+            <LinkRow label="Open-source licenses" onPress={() => router.push('/legal/licenses')} />
+            <LinkRow label="Contact support" onPress={contactSupport} />
+          </ThemedView>
+
           <ThemedView type="backgroundElement" style={styles.group}>
             <Pressable
               onPress={() => supabase.auth.signOut()}
@@ -193,26 +193,37 @@ export default function SettingsScreen() {
                 Log out
               </ThemedText>
             </Pressable>
-            <Pressable
-              onPress={() => router.push('/delete-account')}
-              accessibilityRole="button"
-              accessibilityLabel="Delete account"
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-              <ThemedText type="default" style={styles.logoutLabel}>
-                Delete account
-              </ThemedText>
-              <ThemedText type="default" themeColor="textSecondary">
-                ›
-              </ThemedText>
-            </Pressable>
           </ThemedView>
+
+          <ThemedText type="small" themeColor="textSecondary" style={styles.version}>
+            Bolas {Constants.expoConfig?.version ?? ''}
+          </ThemedText>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
+function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+      <ThemedText type="default">{label}</ThemedText>
+      <ThemedText type="default" themeColor="textSecondary">
+        ›
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  version: {
+    textAlign: 'center',
+    marginTop: Spacing.four,
+  },
   container: {
     flex: 1,
   },
