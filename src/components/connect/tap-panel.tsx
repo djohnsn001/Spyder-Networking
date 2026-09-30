@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { LocationGate } from '@/components/connect/location-gate';
 import { ThemedText } from '@/components/themed-text';
 import { AccentColor, Spacing } from '@/constants/theme';
 import {
@@ -20,15 +21,13 @@ import {
   type BumpResult,
   type InPersonMatch,
 } from '@/lib/connect/api';
-import type { ConnectLocation } from '@/lib/connect/use-connect-location';
+import { FALLBACK_ACCURACY_M, type ConnectLocation } from '@/lib/connect/use-connect-location';
 import { useBumpDetector } from '@/lib/connect/use-bump-detector';
 
 // After a 'waiting' result, poll this often for up to this long. The server
 // gives up on a lone bump after 3 s (get_bump_result).
 const POLL_MS = 400;
 const POLL_FOR_MS = 3500;
-// Used when the OS doesn't report GPS accuracy.
-const FALLBACK_ACCURACY_M = 100;
 
 const NO_MATCH_MESSAGE = "Didn't catch that. Tap again at the same time.";
 
@@ -137,42 +136,8 @@ export function TapPanel({
   }, [pulsing, pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
-  if (location.status === 'checking') {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={AccentColor} />
-      </View>
-    );
-  }
-
   if (!granted) {
-    const canAsk = location.status === 'undetermined' && location.canAskAgain;
-    return (
-      <View style={styles.centered}>
-        <ThemedText type="smallBold" style={styles.center}>
-          {canAsk ? 'Tap phones to connect' : 'Tap needs your location'}
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-          {canAsk
-            ? "Bolas uses your location only while you're tapping, to find the person you're with. Only the city you met in is kept."
-            : "Tap needs your location to find the person you're with. You can turn it on in Settings, or use your QR code instead."}
-        </ThemedText>
-        <Pressable
-          onPress={() => (canAsk ? location.requestPermission() : Linking.openSettings())}
-          accessibilityRole="button"
-          accessibilityLabel={canAsk ? 'Turn on location' : 'Open Settings'}
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.primaryLabel}>
-            {canAsk ? 'Turn on location' : 'Open Settings'}
-          </ThemedText>
-        </Pressable>
-        <Pressable onPress={onUseCode} accessibilityRole="button" accessibilityLabel="Use QR instead">
-          <ThemedText type="smallBold" style={styles.accent}>
-            Use QR instead
-          </ThemedText>
-        </Pressable>
-      </View>
-    );
+    return <LocationGate location={location} title="Tap phones to connect" />;
   }
 
   return (

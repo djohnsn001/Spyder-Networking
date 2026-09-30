@@ -1,5 +1,10 @@
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { ConnectFix } from '@/lib/connect/api';
+
+// Used when the OS doesn't report GPS accuracy.
+export const FALLBACK_ACCURACY_M = 100;
 
 export type ConnectLocationStatus = 'checking' | 'undetermined' | 'granted' | 'denied';
 
@@ -10,17 +15,20 @@ export type ConnectLocation = {
   coords: { latitude: number; longitude: number } | null;
   accuracy: number | null;
   city: string | null;
+  // coords + accuracy, ready to send with a QR code or scan; null until the
+  // first fix arrives.
+  fix: ConnectFix | null;
   requestPermission: () => Promise<void>;
 };
 
 // Location for connecting in person. Never prompts on its own: screens call
-// requestPermission() after explaining why (the Tap tab). Scanning a QR code
-// never needs location; if it's off, city stays null and the server falls
-// back to a profile city.
+// requestPermission() after explaining why. Every way of connecting in person
+// needs it: tapping phones, showing a QR code, and scanning one (the server
+// checks the two phones are together, security item H2).
 //
 // `active` should be true only while the Connect screen is focused. With
-// `watch` on (Tap tab) it keeps a fresh fix so a bump never waits for GPS;
-// otherwise it grabs a single position, just to work out the city.
+// `watch` on it keeps a fresh fix so nothing waits for GPS; otherwise it grabs
+// a single position.
 export function useConnectLocation({
   active,
   watch,
@@ -103,5 +111,13 @@ export function useConnectLocation({
     };
   }, [active, status, watch, lookUpCity]);
 
-  return { status, canAskAgain, coords, accuracy, city, requestPermission };
+  const fix = useMemo<ConnectFix | null>(
+    () =>
+      coords
+        ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: accuracy ?? FALLBACK_ACCURACY_M }
+        : null,
+    [coords, accuracy],
+  );
+
+  return { status, canAskAgain, coords, accuracy, city, fix, requestPermission };
 }

@@ -22,13 +22,27 @@ export type InPersonMatch = {
   other: OtherProfile;
 };
 
+// A phone's position for connecting in person. Both the code's owner and the
+// scanner send one; the server only connects them if they're close
+// (security item H2).
+export type ConnectFix = { latitude: number; longitude: number; accuracy: number };
+
 export type CreateTokenResult =
   | { kind: 'ok'; token: string; expiresAt: string }
-  | { kind: 'rate_limited' };
+  | { kind: 'rate_limited' | 'location_required' | 'poor_location' };
 
 export type RedeemResult =
   | { kind: 'matched'; match: InPersonMatch }
-  | { kind: 'invalid' | 'used' | 'expired' | 'self' };
+  | {
+      kind:
+        | 'invalid'
+        | 'used'
+        | 'expired'
+        | 'self'
+        | 'too_far'
+        | 'location_required'
+        | 'poor_location';
+    };
 
 export type TokenStatus =
   | { kind: 'active' | 'expired' | 'not_found' }
@@ -99,9 +113,16 @@ function toMatch(raw: Record<string, any> | null | undefined): InPersonMatch | n
   };
 }
 
-export async function createConnectToken(): Promise<CreateTokenResult> {
-  const raw = await callRpc('create_connect_token');
+export async function createConnectToken(fix: ConnectFix | null): Promise<CreateTokenResult> {
+  const raw = await callRpc('create_connect_token', {
+    p_lat: fix?.latitude ?? null,
+    p_lng: fix?.longitude ?? null,
+    p_accuracy_m: fix?.accuracy ?? null,
+  });
   if (raw.outcome === 'ok') return { kind: 'ok', token: raw.token, expiresAt: raw.expires_at };
+  if (raw.outcome === 'location_required' || raw.outcome === 'poor_location') {
+    return { kind: raw.outcome };
+  }
   return { kind: 'rate_limited' };
 }
 
@@ -112,15 +133,41 @@ export async function getConnectTokenStatus(token: string): Promise<TokenStatus>
   return { kind: 'not_found' };
 }
 
-export async function redeemConnectToken(token: string, city: string | null): Promise<RedeemResult> {
-  const raw = await callRpc('redeem_connect_token', { p_token: token, p_city: city });
+export async function redeemConnectToken(
+  token: string,
+  city: string | null,
+  fix: ConnectFix | null,
+): Promise<RedeemResult> {
+  const raw = await callRpc('redeem_connect_token', {
+    p_token: token,
+    p_city: city,
+    p_lat: fix?.latitude ?? null,
+    p_lng: fix?.longitude ?? null,
+    p_accuracy_m: fix?.accuracy ?? null,
+  });
   const match = toMatch(raw);
   if (match) return { kind: 'matched', match };
-  if (raw.outcome === 'used' || raw.outcome === 'expired' || raw.outcome === 'self') {
+  if (
+    raw.outcome === 'used' ||
+    raw.outcome === 'expired' ||
+    raw.outcome === 'self' ||
+    raw.outcome === 'too_far' ||
+    raw.outcome === 'location_required' ||
+    raw.outcome === 'poor_location'
+  ) {
     return { kind: raw.outcome };
   }
+  // 'invalid', and 'unavailable' (blocked / suspended): never say which.
   return { kind: 'invalid' };
 }
+
+// Friendly copy for the location outcomes, shared by My code, Scan, and the
+// link screen.
+export const LOCATION_MESSAGE = {
+  too_far: "You need to be together to connect. Scan their code while you're with them.",
+  location_required: 'Connecting needs your location, so Bolas knows you two are together.',
+  poor_location: "Can't get a good location right now. Step outside or try Tap instead.",
+} as const;
 
 export async function submitBump(
   lat: number,

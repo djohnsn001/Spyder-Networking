@@ -3,14 +3,17 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 
+import { LocationGate } from '@/components/connect/location-gate';
 import { ThemedText } from '@/components/themed-text';
 import { AccentColor, Spacing } from '@/constants/theme';
 import {
   friendlyConnectError,
+  LOCATION_MESSAGE,
   redeemConnectToken,
   type InPersonMatch,
 } from '@/lib/connect/api';
 import { parseConnectUrl } from '@/lib/connect/parse-connect-url';
+import type { ConnectLocation } from '@/lib/connect/use-connect-location';
 
 const VIEWFINDER_SIZE = 260;
 // How long a "that code expired" style message stays before scanning resumes.
@@ -21,17 +24,20 @@ const RESULT_MESSAGE = {
   used: 'That code was just used. Scan their new one.',
   self: "That's your own code 🙂",
   invalid: "That's not a Bolas code.",
+  ...LOCATION_MESSAGE,
 } as const;
 
-// Scanning never needs location: `city` is whatever the Connect screen
-// already knows (or null, and the server falls back to a profile city).
+// Scanning sends this phone's location with the code: the server only
+// connects the two phones if they're together (security item H2). The city
+// comes from the same location (or null; the server falls back to a
+// profile city). Face to face, so a successful scan connects right away.
 export function ScanPanel({
   active,
-  city,
+  location,
   onMatched,
 }: {
   active: boolean;
-  city: string | null;
+  location: ConnectLocation;
   onMatched: (match: InPersonMatch) => void;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -72,11 +78,15 @@ export function ScanPanel({
       resumeSoon(RESULT_MESSAGE.invalid);
       return;
     }
+    if (!location.fix) {
+      resumeSoon('Finding your location… try again in a moment.');
+      return;
+    }
 
     setIsRedeeming(true);
     setMessage(null);
     try {
-      const result = await redeemConnectToken(token, city);
+      const result = await redeemConnectToken(token, location.city, location.fix);
       if (result.kind === 'matched') {
         // Stays busy until the match card closes and `active` flips back.
         onMatched(result.match);
@@ -89,6 +99,11 @@ export function ScanPanel({
     } finally {
       setIsRedeeming(false);
     }
+  }
+
+  // Location first (the server requires it), then the camera.
+  if (location.status !== 'granted') {
+    return <LocationGate location={location} title="Scan a friend's code" />;
   }
 
   if (!permission) {

@@ -48,7 +48,10 @@ export default function ConnectScreen() {
   }, []);
   const isLive = isFocused && isForeground;
 
-  const location = useConnectLocation({ active: isLive, watch: tab === 'tap' });
+  // Every tab needs a fresh fix now (QR codes are checked for distance too),
+  // so it's watched while the screen is live; a stale last-known position
+  // could put you in the wrong place.
+  const location = useConnectLocation({ active: isLive, watch: true });
 
   const handleMatched = useCallback((next: InPersonMatch) => setMatch(next), []);
 
@@ -106,10 +109,10 @@ export default function ConnectScreen() {
             />
           ) : null}
           {tab === 'code' ? (
-            <MyCodePanel active={isLive && !match} onMatched={handleMatched} />
+            <MyCodePanel active={isLive && !match} location={location} onMatched={handleMatched} />
           ) : null}
           {tab === 'scan' ? (
-            <ScanPanel active={isLive && !match} city={location.city} onMatched={handleMatched} />
+            <ScanPanel active={isLive && !match} location={location} onMatched={handleMatched} />
           ) : null}
         </ScrollView>
       </SafeAreaView>

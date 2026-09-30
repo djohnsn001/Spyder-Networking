@@ -91,7 +91,8 @@ Account deletion (Guideline 5.1.1(v)): Profile > Settings > Delete account.
 
 Location: optional and foreground-only. "Show me on the map" is off by default; when on, only
 people the user has met in person see an approximate area (~2 km). Precise location is used
-only on the Tap screen to match two phones that tap together, and deleted within minutes.
+only on the Connect screen, to check two phones are together (tap or QR code), and deleted
+within minutes.
 
 Meeting in person: the "Connect" screen (Map or Profile) connects two people who are together,
 via QR code (camera) or tapping phones (motion + location). This needs two devices; the second
