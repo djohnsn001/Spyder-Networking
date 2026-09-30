@@ -125,23 +125,29 @@ export function DiscoverFiltersModal({
                 accessibilityRole={isPremium ? 'text' : 'button'}
                 style={styles.sectionHeaderRow}>
                 <ThemedText type="smallBold">Looking for</ThemedText>
-                {!isPremium ? (
-                  <View style={[styles.premiumBadge, { backgroundColor: theme.secondaryAccentSoft }]}>
-                    <SymbolView
-                      name={{ ios: 'lock.fill', android: 'lock', web: 'lock' }}
-                      size={11}
-                      tintColor={theme.secondaryAccent}
-                      fallback={
-                        <ThemedText type="small" themeColor="secondaryAccent">
-                          🔒
-                        </ThemedText>
-                      }
-                    />
-                    <ThemedText type="small" themeColor="secondaryAccent" style={styles.premiumBadgeText}>
-                      Premium
-                    </ThemedText>
-                  </View>
-                ) : null}
+                {/* Always badged, so premium users can see what their plan
+                    unlocks: closed lock for free, open lock for premium. */}
+                <View
+                  accessibilityLabel={isPremium ? 'Premium, unlocked' : 'Premium, locked'}
+                  style={[styles.premiumBadge, { backgroundColor: theme.secondaryAccentSoft }]}>
+                  <SymbolView
+                    name={
+                      isPremium
+                        ? { ios: 'lock.open.fill', android: 'lock_open', web: 'lock_open' }
+                        : { ios: 'lock.fill', android: 'lock', web: 'lock' }
+                    }
+                    size={11}
+                    tintColor={theme.secondaryAccent}
+                    fallback={
+                      <ThemedText type="small" themeColor="secondaryAccent">
+                        {isPremium ? '🔓' : '🔒'}
+                      </ThemedText>
+                    }
+                  />
+                  <ThemedText type="small" themeColor="secondaryAccent" style={styles.premiumBadgeText}>
+                    {isPremium ? 'Premium · Unlocked' : 'Premium'}
+                  </ThemedText>
+                </View>
               </Pressable>
               <ThemedText type="small" themeColor="textSecondary">
                 {isPremium
