@@ -77,6 +77,12 @@ begin
   select id, id || '@test.bolas.invalid', 'authenticated', 'authenticated', now() - interval '30 days'
   from unnest(array[u1, u2, u3]) as id;
 
+  -- The server requires the current Terms to connect, message, RSVP and host
+  -- (M5), so the test users have accepted them.
+  insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+  select id, public._current_terms_version(), now(), now()
+  from unnest(array[u1, u2, u3]) as id;
+
   update public.profiles
   set username = 'lc_' || left(replace(id::text, '-', ''), 12)
   where id in (u1, u2, u3);
@@ -389,6 +395,12 @@ begin
   -- ---------- setup for B / C / E (as admin) ----------
   insert into auth.users (id, email, aud, role, created_at)
   select id, id || '@test.bolas.invalid', 'authenticated', 'authenticated', now() - interval '30 days'
+  from unnest(array[bA, bB, bC, rR, rT, rOut, rU, adm]) as id;
+
+  -- The server requires the current Terms to connect, message, RSVP and host
+  -- (M5), so the test users have accepted them.
+  insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+  select id, public._current_terms_version(), now(), now()
   from unnest(array[bA, bB, bC, rR, rT, rOut, rU, adm]) as id;
 
   update public.profiles
@@ -719,13 +731,13 @@ begin
   exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
   begin insert into public.event_attendees (event_id, user_id) values (eA, rT);
   exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
-  if public.report_user(rOut, 'profile', null, 'spam', null) ->> 'outcome' = 'not_allowed' then n := n + 1; end if;
+  -- (Reporting while suspended is allowed since M5; see security.sql S.)
   if public.create_event('x', null, null, 43.6, -116.2, now() + interval '1 day', null, 'connections') ->> 'outcome' = 'not_allowed' then n := n + 1; end if;
   if (select count(*) from public.account_restrictions where user_id = rT) = 1 then n := n + 1; end if;
   if (select count(*) from public.profiles where id = rT) = 1 then n := n + 1; end if;
   reset role;
-  ok := n = 7;
-  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C10 suspended: request/message/RSVP/report/event refused; can read own restriction + profile (' || n || '/7)';
+  ok := n = 6;
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C10 suspended: request/message/RSVP/event refused; can read own restriction + profile (' || n || '/6)';
   if not ok then fails := fails + 1; end if;
 
   -- C11: lifting the suspension makes them visible again.

@@ -36,6 +36,12 @@ begin
     (u3, u3 || '@test.bolas.invalid', 'authenticated', 'authenticated'),
     (u4, u4 || '@test.bolas.invalid', 'authenticated', 'authenticated');
 
+  -- The server requires the current Terms to connect, message, RSVP and host
+  -- (M5), so the test users have accepted them.
+  insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+  select id, public._current_terms_version(), now(), now()
+  from unnest(array[u1, u2, u3, u4]) as id;
+
   -- =====================================================================
   -- A. Guard trigger
   -- =====================================================================
