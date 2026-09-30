@@ -71,7 +71,7 @@ if (findings.length > 0) {
   for (const finding of findings) console.error(`  - ${finding}`);
   console.error(
     `\n  ${PUBLIC_PREFIX}* variables are public: they're compiled into the app.\n` +
-      "  Service/secret keys belong in .env.seed.local (scripts only) or the Edge\n" +
+      "  Service/secret keys belong in scripts/.env.seed.local or the Edge\n" +
       "  Function environment, never with an EXPO_PUBLIC_ prefix.\n"
   );
   process.exit(1);

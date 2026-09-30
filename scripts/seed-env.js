@@ -1,11 +1,14 @@
 /**
  * Shared setup for the seed / maintenance scripts in this folder.
  *
- * Admin credentials come from `.env.seed.local` (git-ignored by `.env*.local`),
- * NOT from `.env`. `.env` holds the app's public EXPO_PUBLIC_ values, which get
+ * Admin credentials come from `scripts/.env.seed.local` (git-ignored by
+ * `.env*.local`), NOT from `.env`. It lives in scripts/, not the project root:
+ * in development Expo loads every root file starting with `.env` into the app
+ * bundle (and crashes on names it doesn't know), so a root copy would try to
+ * ship the secret key to the phone. `.env` holds the app's public EXPO_PUBLIC_ values, which get
  * bundled into the app; the service key must never sit next to them.
  *
- *   # .env.seed.local — used only by scripts/*.js, never by the app
+ *   # scripts/.env.seed.local — used only by scripts/*.js, never by the app
  *   SUPABASE_URL=https://<dev-project-ref>.supabase.co
  *   SUPABASE_SECRET_KEY=sb_secret_...   (that project's secret key)
  *
@@ -21,7 +24,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const SEED_ENV_FILE = ".env.seed.local";
+const SEED_ENV_FILE = "scripts/.env.seed.local";
+const OLD_SEED_ENV_FILE = ".env.seed.local";
 const PRODUCTION_REF = "fhevoocpcnrjxyjvitai";
 const PRODUCTION_FLAG = "--i-know-this-is-production";
 
@@ -59,6 +63,13 @@ function fail(message) {
  * the file (handy for CI).
  */
 function loadSeedEnv() {
+  if (fs.existsSync(path.join(ROOT, OLD_SEED_ENV_FILE))) {
+    fail(
+      `Found ${OLD_SEED_ENV_FILE} in the project root. Move it to ${SEED_ENV_FILE}.\n` +
+        `  Expo's dev server loads every root file starting with .env into the app,\n` +
+        `  so the secret key must not sit there.`
+    );
+  }
   const fileVars = parseEnvFile(path.join(ROOT, SEED_ENV_FILE));
   const url = process.env.SUPABASE_URL || fileVars.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SECRET_KEY || fileVars.SUPABASE_SECRET_KEY;
@@ -71,7 +82,7 @@ function loadSeedEnv() {
           ? `  SUPABASE_SERVICE_ROLE_KEY (the legacy JWT) isn't used any more: replace it with\n` +
             `  SUPABASE_SECRET_KEY=sb_secret_... (Supabase dashboard -> Project Settings -> API Keys).\n`
           : "") +
-        `  Put both in ${SEED_ENV_FILE} at the project root (it's git-ignored):\n` +
+        `  Put both in ${SEED_ENV_FILE} (it's git-ignored):\n` +
         `    SUPABASE_URL=https://<dev-project-ref>.supabase.co\n` +
         `    SUPABASE_SECRET_KEY=sb_secret_...   (the DEV project's secret key)\n` +
         `  Never prefix it EXPO_PUBLIC_, never put it in .env, never commit it.`

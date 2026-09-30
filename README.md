@@ -52,7 +52,7 @@ Supabase gives each project two kinds of key (Project Settings → API Keys). Th
 | Key | Safe to ship? | Lives in | Used by |
 |---|---|---|---|
 | **Publishable** `sb_publishable_...` | Yes (it only grants what RLS allows) | `.env` as `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and **EAS environment variables** (same name) for builds | the app |
-| **Secret** `sb_secret_...` | **Never** (bypasses RLS) | `.env.seed.local` as `SUPABASE_SECRET_KEY` (dev project only) | `scripts/*` (seed and clean-up) |
+| **Secret** `sb_secret_...` | **Never** (bypasses RLS) | `scripts/.env.seed.local` as `SUPABASE_SECRET_KEY` (dev project only) | `scripts/*` (seed and clean-up) |
 | Secret, for Edge Functions | Never | nowhere in this repo: Supabase injects `SUPABASE_SECRET_KEYS` into every function automatically | `supabase/functions/delete-account` (via `@supabase/server`) |
 
 - `.env` holds **only** `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
@@ -63,7 +63,7 @@ Supabase gives each project two kinds of key (Project Settings → API Keys). Th
 
 **Seed data** (fake users for the Web Map) goes to dev only:
 
-1. Create `.env.seed.local` at the project root (git-ignored), with the **dev** project's values:
+1. Create `scripts/.env.seed.local` (git-ignored; **not** the project root: Expo's dev server loads every root file starting with `.env` into the app), with the **dev** project's values:
    ```
    SUPABASE_URL=https://<dev-project-ref>.supabase.co
    SUPABASE_SECRET_KEY=sb_secret_...
@@ -75,7 +75,7 @@ Supabase gives each project two kinds of key (Project Settings → API Keys). Th
 avatars:clean-exif` lists them (dry run); `npm run avatars:clean-exif -- --apply` re-saves them
 without it. Try it on dev first; for production add `--i-know-this-is-production`.
 
-Every seed script refuses to run if `.env.seed.local` points at production, unless you add
+Every seed script refuses to run if `scripts/.env.seed.local` points at production, unless you add
 `--i-know-this-is-production`. The secret key never goes in `.env`: that file is only for the
 app's public `EXPO_PUBLIC_` values, which ship inside the app.
 
