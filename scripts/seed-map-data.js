@@ -9,66 +9,32 @@
  * { seed: true } in its auth metadata, so it's easy to find and delete
  * later and easy to tell apart from real users at a glance.
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY in .env (get it from the Supabase
- * dashboard: Project Settings -> API -> service_role key). That key
- * bypasses Row Level Security entirely, so it is never used by the app
- * itself and must never be prefixed EXPO_PUBLIC_ or committed.
+ * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SECRET_KEY for the DEV
+ * project), never .env; see scripts/seed-env.js. The secret key (sb_secret_...)
+ * bypasses Row Level Security, so it's never used by the app, never prefixed
+ * EXPO_PUBLIC_, and never committed. Refuses to run against production
+ * (fhevoocpcnrjxyjvitai) unless --i-know-this-is-production is passed.
+ *
+ * Remove everything it created with scripts/delete-seed-users.js.
  *
  * Usage:
  *   node scripts/seed-map-data.js            # dry run: shows target + plan, does nothing
  *   node scripts/seed-map-data.js --confirm   # actually creates the data
  */
 
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
+const { createAdminClient, loadSeedEnv } = require("./seed-env");
 const { SEED_EMAIL_DOMAIN, PROFILES, SEED_TO_SEED_EDGES } = require("./seed-data");
 
-function loadEnv() {
-  const envPath = path.join(__dirname, "..", ".env");
-  const vars = {};
-  if (fs.existsSync(envPath)) {
-    for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq === -1) continue;
-      const key = trimmed.slice(0, eq).trim();
-      let value = trimmed.slice(eq + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      vars[key] = value;
-    }
-  }
-  return { ...vars, ...process.env };
-}
 
 const YOUR_EMAIL = "zanemechling07@gmail.com";
 
 async function main() {
-  const env = loadEnv();
-  const url = env.EXPO_PUBLIC_SUPABASE_URL;
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
+  const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
 
-  if (!url) {
-    console.error("Missing EXPO_PUBLIC_SUPABASE_URL in .env");
-    process.exit(1);
-  }
-  if (!serviceKey) {
-    console.error(
-      "Missing SUPABASE_SERVICE_ROLE_KEY in .env.\n" +
-        "Add it from the Supabase dashboard: Project Settings -> API -> service_role key.\n" +
-        "Do NOT prefix it EXPO_PUBLIC_ (it must never ship in the app bundle) and never commit it."
-    );
-    process.exit(1);
-  }
 
-  console.log(`Target Supabase project: ${url}`);
   console.log(`This will create ${PROFILES.length} fake profiles + connections to ${YOUR_EMAIL} and each other.`);
 
   if (!confirmed) {
@@ -76,10 +42,7 @@ async function main() {
     return;
   }
 
-  const { createClient } = require("@supabase/supabase-js");
-  const supabase = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const supabase = createAdminClient({ url, serviceKey });
 
   // Guard against double-seeding: bail out if seed accounts already exist.
   const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 });

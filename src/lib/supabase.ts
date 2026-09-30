@@ -1,12 +1,21 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
+// The app uses Supabase's PUBLISHABLE key (sb_publishable_...), which is safe
+// to ship: it only grants what Row Level Security allows. Never a secret key
+// (sb_secret_...) or the legacy anon / service_role JWTs.
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabasePublishableKey) {
+  const renamed = !supabasePublishableKey && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
   throw new Error(
-    'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. Check your .env file.',
+    renamed
+      ? 'EXPO_PUBLIC_SUPABASE_ANON_KEY was renamed. In .env, rename it to ' +
+          'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY and set it to the sb_publishable_... key ' +
+          '(Supabase dashboard > Project Settings > API Keys), then restart with -c.'
+      : 'Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ' +
+          '(sb_publishable_...). Check your .env file.',
   );
 }
 
@@ -39,7 +48,7 @@ const fetchWithClockSkewRetry: typeof fetch = async (input, init) => {
   return response;
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
   global: { fetch: fetchWithClockSkewRetry },
   auth: {
     storage: AsyncStorage,
