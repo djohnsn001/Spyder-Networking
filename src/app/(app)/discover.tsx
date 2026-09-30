@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -18,55 +18,103 @@ import {
   sendConnectionRequest,
 } from '@/lib/connections';
 import { getBusinessStageLabel } from '@/lib/profile-options';
-import { supabase } from '@/lib/supabase';
-import type { ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
+import { DISCOVER_PAGE_SIZE, fetchDiscoverPage } from '@/lib/profiles';
+import { friendlyRpcError } from '@/lib/rpc';
+import type { ConnectionRow, ConnectionStatus, DiscoverProfile } from '@/lib/types';
+
+// Wait this long after the last keystroke before searching the server.
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function DiscoverScreen() {
   const theme = useTheme();
   const { session } = useAuth();
   const myId = session?.user.id;
 
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<DiscoverProfile[]>([]);
   const [connections, setConnections] = useState<ConnectionRow[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // Bumped on every new first-page load, so a slow older response (e.g. for
+  // the previous search text) can't overwrite a newer one.
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const loadFirstPage = useCallback(async () => {
     if (!myId) return;
+    const thisRequest = ++requestId.current;
     setIsLoading(true);
-    const [profilesResult, myConnections] = await Promise.all([
-      supabase.from('profiles').select('*').neq('id', myId).not('username', 'is', null),
-      fetchMyConnections(myId),
-    ]);
-    if (profilesResult.error) {
-      console.error('Failed to load profiles', profilesResult.error);
-    } else {
-      setProfiles(profilesResult.data ?? []);
+    setLoadError(null);
+    try {
+      const page = await fetchDiscoverPage(null, debouncedSearch);
+      if (thisRequest !== requestId.current) return;
+      setProfiles(page);
+      setHasMore(page.length === DISCOVER_PAGE_SIZE);
+    } catch (error) {
+      if (thisRequest !== requestId.current) return;
+      setLoadError(friendlyRpcError(error));
+    } finally {
+      if (thisRequest === requestId.current) setIsLoading(false);
     }
-    setConnections(myConnections);
-    setIsLoading(false);
+  }, [myId, debouncedSearch]);
+
+  // Next page, starting after the last profile already on screen. After a
+  // failed page it waits for a tap (retry) instead of looping on scroll.
+  async function loadMore(retry = false) {
+    const last = profiles[profiles.length - 1];
+    if (!last || !hasMore || isLoading || isLoadingMore || (loadError && !retry)) return;
+    const thisRequest = requestId.current;
+    setLoadError(null);
+    setIsLoadingMore(true);
+    try {
+      const page = await fetchDiscoverPage(last.cursor, debouncedSearch);
+      if (thisRequest !== requestId.current) return;
+      setProfiles((current) => {
+        const known = new Set(current.map((profile) => profile.id));
+        return [...current, ...page.filter((profile) => !known.has(profile.id))];
+      });
+      setHasMore(page.length === DISCOVER_PAGE_SIZE);
+    } catch (error) {
+      if (thisRequest !== requestId.current) return;
+      setLoadError(friendlyRpcError(error));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  // New search text (and the first visit) starts again from page 1.
+  useEffect(() => {
+    void loadFirstPage();
+  }, [loadFirstPage]);
+
+  const loadConnections = useCallback(async () => {
+    if (!myId) return;
+    setConnections(await fetchMyConnections(myId));
   }, [myId]);
 
+  // Coming back to the tab keeps the pages already scrolled through, and
+  // only refreshes connection status (it may have changed on a profile).
   useFocusEffect(
     useCallback(() => {
-      void load();
-    }, [load]),
+      void loadConnections();
+    }, [loadConnections]),
   );
 
-  const filteredProfiles = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return profiles;
-    return profiles.filter((profile) => {
-      const haystack = [profile.full_name, profile.username, ...profile.interests]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [profiles, search]);
+  function handleRefresh() {
+    void loadFirstPage();
+    void loadConnections();
+  }
 
-  async function handleConnectPress(profile: Profile) {
+  async function handleConnectPress(profile: DiscoverProfile) {
     if (!myId) return;
     const { status, connectionId } = getConnectionStatus(connections, myId, profile.id);
     setPendingId(profile.id);
@@ -84,7 +132,7 @@ export default function DiscoverScreen() {
     }
   }
 
-  async function handleRespond(profile: Profile, connectionId: string, accept: boolean) {
+  async function handleRespond(profile: DiscoverProfile, connectionId: string, accept: boolean) {
     if (!myId) return;
     setPendingId(profile.id);
     try {
@@ -123,18 +171,34 @@ export default function DiscoverScreen() {
           />
 
           <FlatList
-            data={filteredProfiles}
+            data={profiles}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             refreshing={isLoading}
-            onRefresh={load}
+            onRefresh={handleRefresh}
+            onEndReached={() => void loadMore()}
+            onEndReachedThreshold={0.5}
             ListEmptyComponent={
-              !isLoading ? (
+              !isLoading && !loadError ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                  {search
+                  {debouncedSearch
                     ? 'No one matches that search yet.'
                     : 'No other builders here yet — check back soon.'}
                 </ThemedText>
+              ) : null
+            }
+            ListFooterComponent={
+              loadError ? (
+                <Pressable
+                  onPress={profiles.length > 0 ? () => void loadMore(true) : handleRefresh}
+                  accessibilityRole="button"
+                  style={styles.footer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.footerText}>
+                    {loadError} Tap to try again.
+                  </ThemedText>
+                </Pressable>
+              ) : isLoadingMore ? (
+                <ActivityIndicator style={styles.footer} />
               ) : null
             }
             renderItem={({ item }) => {
@@ -241,6 +305,12 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     marginTop: Spacing.five,
+  },
+  footer: {
+    paddingVertical: Spacing.three,
+  },
+  footerText: {
+    textAlign: 'center',
   },
   cardPressed: {
     opacity: 0.85,

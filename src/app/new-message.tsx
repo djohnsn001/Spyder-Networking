@@ -10,13 +10,13 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { fetchConnectionProfiles } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
-import type { Profile } from '@/lib/types';
+import type { ProfileSummary } from '@/lib/types';
 
 export default function NewMessageScreen() {
   const { session } = useAuth();
   const myId = session?.user.id;
 
-  const [connections, setConnections] = useState<Profile[]>([]);
+  const [connections, setConnections] = useState<ProfileSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export default function NewMessageScreen() {
     })();
   }, [myId]);
 
-  async function handleSelect(profile: Profile) {
+  async function handleSelect(profile: ProfileSummary) {
     if (startingId) return;
     setErrorMessage(null);
     setStartingId(profile.id);

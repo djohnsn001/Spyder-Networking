@@ -15,6 +15,23 @@ export type Profile = {
   updated_at: string;
 };
 
+// What anyone may see of someone else's profile. Settings like
+// location_sharing and notifications_enabled stay on your own Profile.
+export type PublicProfile = Pick<
+  Profile,
+  'id' | 'username' | 'full_name' | 'avatar_url' | 'bio' | 'interests' | 'business_stage' | 'city'
+>;
+
+// Just enough for an avatar and a name (inbox, chat header, requests).
+export type ProfileSummary = Pick<Profile, 'id' | 'username' | 'full_name' | 'avatar_url'>;
+
+// The connections list also shows city and stage.
+export type ConnectionProfile = ProfileSummary & Pick<Profile, 'city' | 'business_stage'>;
+
+// One row of discover_profiles(): a public profile plus the keyset cursor
+// to pass back for the next page.
+export type DiscoverProfile = PublicProfile & { cursor: string };
+
 export type ConnectionRow = {
   id: string;
   requester_id: string;

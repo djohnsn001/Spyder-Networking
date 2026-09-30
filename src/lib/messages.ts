@@ -1,7 +1,8 @@
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 
+import { PROFILE_SUMMARY_COLUMNS } from '@/lib/profiles';
 import { supabase } from '@/lib/supabase';
-import type { Message, Profile } from '@/lib/types';
+import type { Message, ProfileSummary } from '@/lib/types';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
@@ -15,7 +16,7 @@ let channelSequence = 0;
 
 export type ConversationSummary = {
   conversationId: string;
-  otherUser: Profile;
+  otherUser: ProfileSummary;
   lastMessage: { body: string; senderId: string; createdAt: string } | null;
   lastActivityAt: string;
   unreadCount: number;
@@ -47,7 +48,7 @@ export async function fetchConversations(userId: string): Promise<ConversationSu
     .filter((id): id is string => id !== null);
 
   const [profilesResult, messagesResult, unreadResult] = await Promise.all([
-    supabase.from('profiles').select('*').in('id', otherUserIds),
+    supabase.from('profiles').select(PROFILE_SUMMARY_COLUMNS).in('id', otherUserIds),
     lastMessageIds.length > 0
       ? supabase.from('messages').select('id, body, sender_id, created_at').in('id', lastMessageIds)
       : Promise.resolve({ data: [], error: null }),
@@ -107,7 +108,7 @@ export async function fetchConversations(userId: string): Promise<ConversationSu
 export async function fetchOtherParticipant(
   conversationId: string,
   userId: string,
-): Promise<Profile | null> {
+): Promise<ProfileSummary | null> {
   const { data: conversation, error } = await supabase
     .from('conversations')
     .select('user_a_id, user_b_id')
@@ -123,7 +124,7 @@ export async function fetchOtherParticipant(
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PROFILE_SUMMARY_COLUMNS)
     .eq('id', otherId)
     .maybeSingle();
   if (profileError) {
