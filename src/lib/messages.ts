@@ -1,5 +1,6 @@
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 
+import { isRateLimited, RateLimitError } from '@/lib/rate-limit';
 import { supabase } from '@/lib/supabase';
 import type { Message, Profile } from '@/lib/types';
 
@@ -192,6 +193,17 @@ export async function sendMessage(
     .insert({ conversation_id: conversationId, sender_id: senderId, body: trimmed })
     .select()
     .single();
+  if (isRateLimited(error, 'message_rate_limited')) {
+    throw error.details === 'day'
+      ? new RateLimitError(
+          'Daily message limit reached',
+          "You've reached the limit for messages in 24 hours. Try again later.",
+        )
+      : new RateLimitError(
+          'Slow down a little',
+          "You're sending messages very quickly. Wait a minute, then try again.",
+        );
+  }
   if (error) throw error;
   return data;
 }

@@ -1,3 +1,4 @@
+import { isRateLimited, RateLimitError } from '@/lib/rate-limit';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionLevel, ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
 
@@ -50,6 +51,12 @@ export async function sendConnectionRequest(myId: string, otherId: string) {
   const { error } = await supabase
     .from('connections')
     .insert({ requester_id: myId, addressee_id: otherId });
+  if (isRateLimited(error, 'connection_rate_limited')) {
+    throw new RateLimitError(
+      'Daily request limit reached',
+      "You've reached the limit for connection requests in 24 hours. Try again later. Meeting in person? Scanning each other's QR code still works.",
+    );
+  }
   if (error) throw error;
 }
 

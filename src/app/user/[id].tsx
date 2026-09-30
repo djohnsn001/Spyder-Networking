@@ -1,6 +1,6 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -21,6 +21,7 @@ import {
 } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
 import { getBusinessStageLabel } from '@/lib/profile-options';
+import { RateLimitError } from '@/lib/rate-limit';
 import { openSafetyMenu } from '@/lib/safety';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionRow, Profile } from '@/lib/types';
@@ -78,7 +79,8 @@ export default function UserProfileScreen() {
       }
       setConnections(await fetchMyConnections(myId));
     } catch (error) {
-      console.error('Failed to update connection', error);
+      if (error instanceof RateLimitError) Alert.alert(error.title, error.message);
+      else console.error('Failed to update connection', error);
     } finally {
       setIsUpdating(false);
     }
