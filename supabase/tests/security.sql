@@ -2200,7 +2200,8 @@ begin
     insert into public.app_admins (user_id) values (wAdm);
     insert into public.connections (requester_id, addressee_id, status) values
       (wO, wM, 'accepted'), (wS, wM, 'accepted'), (wF, wN, 'accepted');
-    insert into auth.mfa_factors (user_id, factor_type, status) values (wF, 'totp', 'verified');
+    insert into auth.mfa_factors (id, user_id, factor_type, status, created_at, updated_at)
+    values (gen_random_uuid(), wF, 'totp', 'verified', now(), now());
 
     -- W1: an admin at aal1 is refused, and the hint says why (H4's hint
     -- survives M5's rewrite of _require_admin).
