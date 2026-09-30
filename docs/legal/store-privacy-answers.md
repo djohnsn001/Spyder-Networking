@@ -44,7 +44,7 @@ covers moderation and rate limits).
 | User Content → **Other User Content** | Yes | bio, interests, business stage, typed city, event title/description, report details |
 | User Content → Customer Support | No, see A5 | support is by email, outside the app |
 | User Content → Audio / Gameplay | No | |
-| Location → **Precise Location** | Yes | phone-tap GPS (kept up to ~10 min); event pins, see A2 |
+| Location → **Precise Location** | Yes | phone-tap GPS (kept up to ~10 min); QR code owner location (~100 m, erased on use / within 1 h); event pins, see A2 |
 | Location → **Coarse Location** | Yes | Web Map position (~5 km² grid, deleted after 7 days idle or when sharing is off); "met in" city |
 | Identifiers → **User ID** | Yes | account UUID, username |
 | Identifiers → Device ID | No | no advertising ID or device ID is read (MapKit is part of iOS) |
@@ -99,7 +99,7 @@ Global answers:
 
 | Google category → type | Collected | Shared | Optional? | Purposes | Notes |
 |---|---|---|---|---|---|
-| Location → **Precise location** | Yes | No | **Optional** (the app works without location permission) | App functionality | phone taps (raw GPS); event pins |
+| Location → **Precise location** | Yes | No | **Optional** (the app works without location permission) | App functionality | phone taps (raw GPS); QR codes (~100 m, erased on use); event pins |
 | Location → **Approximate location** | Yes | No | Optional | App functionality | Web Map position (~5 km² grid); "met in" city; typed profile city |
 | Personal info → **Name** | Yes | No | Optional | App functionality | |
 | Personal info → **Email address** | Yes | No | **Required** | App functionality, Account management | |

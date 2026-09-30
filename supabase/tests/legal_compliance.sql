@@ -495,9 +495,11 @@ begin
   ok := v ->> 'outcome' = 'unavailable';
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);
-  tok := public.create_connect_token() ->> 'token';
+  -- Both phones send a location since 20260929020000 (item H2), so the
+  -- block is what stops this, not a missing location.
+  tok := public.create_connect_token(43.615, -116.202, 20) ->> 'token';
   perform set_config('request.jwt.claims', json_build_object('sub', bB, 'role', 'authenticated')::text, true);
-  v := public.redeem_connect_token(tok, null);
+  v := public.redeem_connect_token(tok, null, 43.6151, -116.2021, 20);
   ok := ok and v = jsonb_build_object('outcome', 'unavailable');
   -- Taps far from any other test data.
   perform set_config('request.jwt.claims', json_build_object('sub', bA, 'role', 'authenticated')::text, true);

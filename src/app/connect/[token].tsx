@@ -4,12 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
+import { LocationGate } from '@/components/connect/location-gate';
 import { MatchCard } from '@/components/connect/match-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, Spacing } from '@/constants/theme';
 import {
   friendlyConnectError,
+  LOCATION_MESSAGE,
   previewConnectToken,
   RATE_LIMITED_MESSAGE,
   redeemConnectToken,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/connect/api';
 import { isConnectToken } from '@/lib/connect/parse-connect-url';
 import { takePendingConnectToken } from '@/lib/connect/pending-link';
+import { useConnectLocation } from '@/lib/connect/use-connect-location';
 
 const RESULT_MESSAGE = {
   expired: 'That code expired. Ask them to show a fresh one.',
@@ -25,6 +28,7 @@ const RESULT_MESSAGE = {
   self: "That's your own code 🙂",
   invalid: "That link isn't a valid Bolas code.",
   rate_limited: RATE_LIMITED_MESSAGE,
+  ...LOCATION_MESSAGE,
 } as const;
 
 function close() {
@@ -39,7 +43,8 @@ function close() {
 // A link can come from anywhere (a website, a text, a DM), so opening one
 // must never connect by itself (security item H1). The screen first
 // PREVIEWS the code, which shows whose it is without using it up, and only
-// redeems when the person taps Connect.
+// redeems when the person taps Connect. Connecting also sends this phone's
+// location: the server only connects phones that are together (item H2).
 export default function ConnectLinkScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const code = token?.toLowerCase() ?? '';
@@ -47,6 +52,8 @@ export default function ConnectLinkScreen() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [match, setMatch] = useState<InPersonMatch | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const location = useConnectLocation({ active: true, watch: true });
+  const { fix } = location;
 
   useEffect(() => {
     // This screen is handling the code, so the root layout mustn't replay it.
@@ -77,7 +84,7 @@ export default function ConnectLinkScreen() {
   async function handleConnect() {
     setIsConnecting(true);
     try {
-      const result = await redeemConnectToken(code, null);
+      const result = await redeemConnectToken(code, location.city, fix);
       if (result.kind === 'matched') setMatch(result.match);
       else {
         setOther(null);
@@ -91,6 +98,18 @@ export default function ConnectLinkScreen() {
   }
 
   const otherName = other?.full_name || other?.username || 'this person';
+  // Connect needs a location fix; until then the button waits.
+  const isWaitingForFix = !fix;
+
+  if (location.status !== 'granted' && !message && !match) {
+    return (
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <LocationGate location={location} title="Connect with this code" />
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -121,17 +140,24 @@ export default function ConnectLinkScreen() {
             </ThemedView>
             <Pressable
               onPress={handleConnect}
-              disabled={isConnecting}
+              disabled={isConnecting || isWaitingForFix}
               accessibilityRole="button"
               accessibilityLabel={`Connect with ${otherName}`}
-              accessibilityState={{ disabled: isConnecting, busy: isConnecting }}
+              accessibilityState={{
+                disabled: isConnecting || isWaitingForFix,
+                busy: isConnecting || isWaitingForFix,
+              }}
               style={({ pressed }) => [
                 styles.primaryButton,
-                isConnecting && styles.disabled,
+                (isConnecting || isWaitingForFix) && styles.disabled,
                 pressed && styles.pressed,
               ]}>
               {isConnecting ? (
                 <ActivityIndicator color="#fdfbf7" />
+              ) : isWaitingForFix ? (
+                <ThemedText type="smallBold" style={styles.primaryLabel}>
+                  Finding your location…
+                </ThemedText>
               ) : (
                 <ThemedText type="smallBold" style={styles.primaryLabel}>
                   Connect

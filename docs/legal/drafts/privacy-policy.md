@@ -57,7 +57,7 @@ offered in the United States.
 | What | When | Why |
 |---|---|---|
 | **Approximate location for the Web Map** | Only if you turn on **Show me on the map** (it's off by default), each time you open the Map. | So people you've met in person can see roughly where you are. Our server snaps your position to a grid about 2 km across **before storing it**; your exact position is never stored for the map. |
-| **Precise location while tapping phones** | Only on the **Tap** screen, when you tap phones with someone to connect. | To match your phone with the phone you tapped. Your coordinates are erased as soon as the match is decided, and the record is deleted within about 10 minutes. |
+| **Precise location while connecting in person** | Only on the **Connect** screen: when you tap phones, show your QR code, or scan someone's. | To check you're really with the person you're connecting with. **Tapping:** your coordinates are erased as soon as the match is decided, and the record is deleted within about 10 minutes. **Your QR code:** it carries your location rounded to about 100 m, erased the moment someone uses the code (unused codes are deleted within an hour). **Scanning:** your location is compared with the code's and not stored. |
 | **The city you met someone in** | When you connect in person (tap or QR code). | To show "Met in Boise." We keep only the city name, never coordinates. |
 | **Camera** | Only when you scan a QR code. | Scanning happens on your phone. **No images are sent to us.** |
 | **Motion sensor** | Only on the Tap screen. | To detect the tap. Motion data stays on your phone. |

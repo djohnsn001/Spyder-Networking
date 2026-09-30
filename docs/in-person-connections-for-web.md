@@ -90,8 +90,8 @@ them. Each one returns JSON.
 
 | RPC | Returns |
 |---|---|
-| `create_connect_token()` | `{ outcome: 'ok', token, expires_at }` or `{ outcome: 'rate_limited' }`. The token is 32 hex chars, expires in 60 s, and works once. Limit: 6 per minute. |
-| `redeem_connect_token(p_token, p_city default null)` | On failure: `{ outcome: 'invalid' \| 'used' \| 'expired' \| 'self' }`. On success: `{ outcome: 'created' \| 'upgraded' \| 'already_connected', connection_id, met_city, undo_until, other_user_id, other_profile }` |
+| `create_connect_token(p_lat, p_lng, p_accuracy_m)` | `{ outcome: 'ok', token, expires_at }`, or `{ outcome: 'location_required' \| 'poor_location' \| 'rate_limited' }`. The token is 32 hex chars, expires in **30 s**, works once, and carries the owner's location (rounded to 3 decimals). Limit: 6 per minute. |
+| `redeem_connect_token(p_token, p_city, p_lat, p_lng, p_accuracy_m)` | On failure: `{ outcome: 'invalid' \| 'used' \| 'expired' \| 'self' \| 'location_required' \| 'poor_location' \| 'too_far' \| 'unavailable' }` (`too_far`: more than max(300 m, both accuracies) from the code's owner; the code stays usable). Since 20260929020000 (security item H2). On success: `{ outcome: 'created' \| 'upgraded' \| 'already_connected', connection_id, met_city, undo_until, other_user_id, other_profile }` |
 | `get_connect_token_status(p_token)` | `{ status: 'active' \| 'expired' \| 'used' \| 'not_found', result, other_profile }`. Only the code's owner can see it. The mobile app polls this every ~1 s while a code is on screen. |
 
 The QR encodes `bolas://connect/<token>`.

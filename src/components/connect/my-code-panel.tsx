@@ -11,11 +11,13 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Avatar } from '@/components/avatar';
+import { LocationGate } from '@/components/connect/location-gate';
 import { ThemedText } from '@/components/themed-text';
 import { AccentColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import type { InPersonMatch } from '@/lib/connect/api';
 import { connectUrlFor } from '@/lib/connect/parse-connect-url';
+import type { ConnectLocation } from '@/lib/connect/use-connect-location';
 import { useRotatingToken } from '@/lib/connect/use-rotating-token';
 
 const QR_SIZE = 220;
@@ -29,13 +31,21 @@ function StayAwake() {
 
 export function MyCodePanel({
   active,
+  location,
   onMatched,
 }: {
   active: boolean;
+  location: ConnectLocation;
   onMatched: (match: InPersonMatch) => void;
 }) {
   const { profile } = useAuth();
-  const { token, rotatesAt, error } = useRotatingToken({ active, onMatched });
+  // Codes carry this phone's location, so none are made until there is one.
+  const hasFix = location.status === 'granted' && location.fix !== null;
+  const { token, rotatesAt, error } = useRotatingToken({
+    active: active && hasFix,
+    fix: location.fix,
+    onMatched,
+  });
   const name = profile?.full_name || profile?.username || '';
 
   // Countdown bar: full when a new code appears, empty when it rotates.
@@ -52,6 +62,10 @@ export function MyCodePanel({
     });
   }, [rotatesAt, progress]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+
+  if (location.status !== 'granted') {
+    return <LocationGate location={location} title="Show your code" />;
+  }
 
   return (
     <View style={styles.container}>
@@ -83,7 +97,7 @@ export function MyCodePanel({
       </View>
 
       <ThemedText type="default" themeColor="textSecondary" style={styles.center}>
-        Have them scan this in Bolas
+        {hasFix ? 'Have them scan this in Bolas' : 'Finding your location…'}
       </ThemedText>
 
       {error ? (

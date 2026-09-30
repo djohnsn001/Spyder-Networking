@@ -158,11 +158,11 @@ export default function SettingsScreen() {
 
             <View style={styles.row}>
               <View style={styles.rowTextCol}>
-                <ThemedText type="default">Location &amp; tapping</ThemedText>
+                <ThemedText type="default">Location &amp; connecting in person</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  When you tap phones, Bolas uses your location only to find the person
-                  you&apos;re with. It&apos;s deleted within minutes, and only the city you met
-                  in is kept.
+                  When you tap phones or use a QR code, Bolas uses your location only to check
+                  you&apos;re with the other person. It&apos;s deleted within minutes, and only
+                  the city you met in is kept.
                 </ThemedText>
               </View>
             </View>

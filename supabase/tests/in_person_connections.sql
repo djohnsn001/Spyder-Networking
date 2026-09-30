@@ -276,19 +276,24 @@ begin
   -- u4-u1 in_person.
   -- =====================================================================
 
+  -- Since 20260929020000 (security item H2) both phones send a location:
+  -- the owner at 43.615, -116.202 and the scanner ~15 m away. Calls that
+  -- fail before the distance check (used / self / expired / invalid) don't
+  -- need one.
+
   -- C1: create a token.
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
-  v := public.create_connect_token();
+  v := public.create_connect_token(43.615, -116.202, 20);
   tok := v ->> 'token';
   ok := v ->> 'outcome' = 'ok' and tok ~ '^[0-9a-f]{32}$'
-        and (v ->> 'expires_at')::timestamptz = now() + interval '60 seconds';
-  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C1 token is 32 hex chars, expires in 60s';
+        and (v ->> 'expires_at')::timestamptz = now() + interval '30 seconds';
+  report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C1 token is 32 hex chars, expires in 30s';
   if not ok then fails := fails + 1; end if;
 
   -- C2: u2 scans it -> their acquaintance is upgraded to in_person via qr.
   perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
-  v := public.redeem_connect_token(tok, 'Eagle');
+  v := public.redeem_connect_token(tok, 'Eagle', 43.6151, -116.2021, 20);
   reset role;
   select * into c from public.connections where id = (v ->> 'connection_id')::uuid;
   ok := v ->> 'outcome' = 'upgraded' and (v ->> 'other_user_id')::uuid = u1
@@ -322,7 +327,7 @@ begin
 
   -- C6: scanning your own code -> self.
   perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
-  tok2 := public.create_connect_token() ->> 'token';
+  tok2 := public.create_connect_token(43.615, -116.202, 20) ->> 'token';
   v := public.redeem_connect_token(tok2, null);
   ok := v ->> 'outcome' = 'self';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C6 own code -> self';
@@ -351,18 +356,18 @@ begin
   update public.profiles set city = 'Boise' where id = u1;
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
-  tok := public.create_connect_token() ->> 'token';
+  tok := public.create_connect_token(43.615, -116.202, 20) ->> 'token';
   perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
-  v := public.redeem_connect_token(tok, '   ');
+  v := public.redeem_connect_token(tok, '   ', 43.6151, -116.2021, 20);
   ok := v ->> 'outcome' = 'upgraded' and v ->> 'met_city' = 'Boise';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C9 pending -> upgraded, city falls back to owner profile';
   if not ok then fails := fails + 1; end if;
 
   -- C10: scanning someone you already met -> already_connected.
   perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
-  tok := public.create_connect_token() ->> 'token';
+  tok := public.create_connect_token(43.615, -116.202, 20) ->> 'token';
   perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
-  v := public.redeem_connect_token(tok, 'Boise');
+  v := public.redeem_connect_token(tok, 'Boise', 43.6151, -116.2021, 20);
   ok := v ->> 'outcome' = 'already_connected' and (v -> 'other_profile' ->> 'id')::uuid = u1;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C10 already met -> already_connected';
   if not ok then fails := fails + 1; end if;
@@ -371,9 +376,9 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u4, 'role', 'authenticated')::text, true);
   n := 0;
   for i in 1..6 loop
-    if public.create_connect_token() ->> 'outcome' = 'ok' then n := n + 1; end if;
+    if public.create_connect_token(43.615, -116.202, 20) ->> 'outcome' = 'ok' then n := n + 1; end if;
   end loop;
-  v := public.create_connect_token();
+  v := public.create_connect_token(43.615, -116.202, 20);
   ok := n = 6 and v ->> 'outcome' = 'rate_limited';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C11 7th code in a minute -> rate_limited';
   if not ok then fails := fails + 1; end if;
@@ -388,7 +393,7 @@ begin
   -- C13: anon can't call any of the QR functions.
   perform set_config('role', 'anon', true);
   n := 0;
-  begin perform public.create_connect_token(); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
+  begin perform public.create_connect_token(43.615, -116.202, 20); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
   begin perform public.redeem_connect_token(tok, null); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
   begin perform public.get_connect_token_status(tok); exception when others then if sqlstate = '42501' then n := n + 1; end if; end;
   reset role;

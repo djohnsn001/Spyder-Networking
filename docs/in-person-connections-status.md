@@ -74,8 +74,10 @@ Changing them needs a **new** migration; never edit old ones.
 | `c_result_wait` | 3 s | A lone bump becomes "no match" after this |
 | `c_retention` | 10 min | Raw GPS is deleted after this |
 
-**QR (server):** `create_connect_token` has `c_max_per_minute = 6` and `c_lifetime = 60 s`. The
-app rotates every 30 s (`TOKEN_ROTATE_MS` in `use-rotating-token.ts`). At busy events, 6 a
+**QR (server):** `create_connect_token` has `c_max_per_minute = 6` and `c_lifetime = 30 s`
+(was 60 s before security item H2). `redeem_connect_token` allows max(300 m, both accuracies)
+and rejects accuracy worse than 1 km. The app rotates every 25 s (`TOKEN_ROTATE_MS` in
+`use-rotating-token.ts`). At busy events, 6 a
 minute caps you at ~5 scans a minute; raise it if that's too tight.
 
 ## Later / out of scope (not built)

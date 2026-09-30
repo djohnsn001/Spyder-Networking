@@ -88,7 +88,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Bolas uses your location to show where you are on the map, to share your approximate area with people you've met in person (only if you turn that on), and to match you with the person you're tapping phones with.",
+          "locationWhenInUsePermission": "Bolas uses your location to show where you are on the map, to share your approximate area with people you've met in person (only if you turn that on), and to check you're with the person you're connecting with when you tap phones or use a QR code.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false
         }
