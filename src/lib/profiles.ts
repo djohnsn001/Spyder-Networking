@@ -1,5 +1,5 @@
 import { callRpc } from '@/lib/rpc';
-import type { DiscoverProfile } from '@/lib/types';
+import type { BusinessStage, DiscoverProfile } from '@/lib/types';
 
 // Column lists for profile reads, so screens only fetch what they show
 // (security item M8). They must match the types in types.ts.
@@ -13,17 +13,35 @@ export const CONNECTION_PROFILE_COLUMNS = 'id, username, full_name, avatar_url, 
 // The server never returns more than 30 per page, whatever we ask for.
 export const DISCOVER_PAGE_SIZE = 30;
 
+// Discover filters. Empty means "no filter". Interests match anyone with at
+// least one of them; city is a case-insensitive "contains".
+export type DiscoverFilters = {
+  stages: BusinessStage[];
+  interests: string[];
+  city: string;
+};
+
+export const EMPTY_DISCOVER_FILTERS: DiscoverFilters = { stages: [], interests: [], city: '' };
+
+export function countActiveFilters(filters: DiscoverFilters) {
+  return filters.stages.length + filters.interests.length + (filters.city.trim() ? 1 : 0);
+}
+
 // One page of Discover, newest profiles first. Pass the last row's cursor
 // to get the next page; a page shorter than DISCOVER_PAGE_SIZE is the end.
 // Throws RpcError (see friendlyRpcError). The server skips me, blocked (either way) and suspended people.
 export async function fetchDiscoverPage(
   cursor: string | null,
   search: string,
+  filters: DiscoverFilters = EMPTY_DISCOVER_FILTERS,
 ): Promise<DiscoverProfile[]> {
   const rows = await callRpc<DiscoverProfile[] | null>('discover_profiles', {
     p_cursor: cursor,
     p_limit: DISCOVER_PAGE_SIZE,
     p_search: search.trim() || null,
+    p_stages: filters.stages.length > 0 ? filters.stages : null,
+    p_interests: filters.interests.length > 0 ? filters.interests : null,
+    p_city: filters.city.trim() || null,
   });
   return rows ?? [];
 }

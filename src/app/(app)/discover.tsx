@@ -17,8 +17,15 @@ import {
   removeConnection,
   sendConnectionRequest,
 } from '@/lib/connections';
+import { DiscoverFiltersModal } from '@/components/discover-filters-modal';
 import { getBusinessStageLabel } from '@/lib/profile-options';
-import { DISCOVER_PAGE_SIZE, fetchDiscoverPage } from '@/lib/profiles';
+import {
+  countActiveFilters,
+  DISCOVER_PAGE_SIZE,
+  type DiscoverFilters,
+  EMPTY_DISCOVER_FILTERS,
+  fetchDiscoverPage,
+} from '@/lib/profiles';
 import { RateLimitError } from '@/lib/rate-limit';
 import { friendlyRpcError } from '@/lib/rpc';
 import type { ConnectionRow, ConnectionStatus, DiscoverProfile } from '@/lib/types';
@@ -40,6 +47,9 @@ export default function DiscoverScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<DiscoverFilters>(EMPTY_DISCOVER_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount = countActiveFilters(filters);
 
   // Bumped on every new first-page load, so a slow older response (e.g. for
   // the previous search text) can't overwrite a newer one.
@@ -57,12 +67,12 @@ export default function DiscoverScreen() {
     return () => clearTimeout(timer);
   }, [search, debouncedSearch]);
 
-  // Page 1 for the current search. Callers set isLoading first; state
-  // changes here happen only when the answer arrives.
+  // Page 1 for the current search and filters. Callers set isLoading first;
+  // state changes here happen only when the answer arrives.
   const fetchFirstPage = useCallback(() => {
     if (!myId) return;
     const thisRequest = ++requestId.current;
-    fetchDiscoverPage(null, debouncedSearch).then(
+    fetchDiscoverPage(null, debouncedSearch, filters).then(
       (page) => {
         if (thisRequest !== requestId.current) return;
         setProfiles(page);
@@ -75,7 +85,7 @@ export default function DiscoverScreen() {
         setIsLoading(false);
       },
     );
-  }, [myId, debouncedSearch]);
+  }, [myId, debouncedSearch, filters]);
 
   // Next page, starting after the last profile already on screen. After a
   // failed page it waits for a tap (retry) instead of looping on scroll.
@@ -86,7 +96,7 @@ export default function DiscoverScreen() {
     setLoadError(null);
     setIsLoadingMore(true);
     try {
-      const page = await fetchDiscoverPage(last.cursor, debouncedSearch);
+      const page = await fetchDiscoverPage(last.cursor, debouncedSearch, filters);
       if (thisRequest !== requestId.current) return;
       setProfiles((current) => {
         const known = new Set(current.map((profile) => profile.id));
@@ -101,7 +111,16 @@ export default function DiscoverScreen() {
     }
   }
 
-  // New search text (and the first visit) starts again from page 1.
+  // New filters start again from page 1 (loaded by the effect below).
+  function applyFilters(next: DiscoverFilters) {
+    setFiltersOpen(false);
+    if (JSON.stringify(next) === JSON.stringify(filters)) return;
+    setIsLoading(true);
+    setLoadError(null);
+    setFilters(next);
+  }
+
+  // New search text or filters (and the first visit) start again from page 1.
   useEffect(() => {
     fetchFirstPage();
   }, [fetchFirstPage]);
@@ -171,17 +190,68 @@ export default function DiscoverScreen() {
             Discover
           </ThemedText>
 
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search by name or interest"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={[
-              styles.searchInput,
-              { color: theme.text, backgroundColor: theme.backgroundSelected },
-            ]}
+          <View style={styles.searchRow}>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search by name or interest"
+              placeholderTextColor={theme.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[
+                styles.searchInput,
+                { color: theme.text, backgroundColor: theme.backgroundSelected },
+              ]}
+            />
+            <Pressable
+              onPress={() => setFiltersOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filters'
+              }
+              style={({ pressed }) => [
+                styles.filterButton,
+                {
+                  backgroundColor:
+                    activeFilterCount > 0 ? theme.secondaryAccent : theme.backgroundSelected,
+                },
+                pressed && styles.cardPressed,
+              ]}>
+              <ThemedText
+                type="smallBold"
+                themeColor={activeFilterCount > 0 ? 'onSecondaryAccent' : 'text'}>
+                {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          {activeFilterCount > 0 ? (
+            <View style={styles.activeFiltersRow}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.activeFiltersText} numberOfLines={1}>
+                {[
+                  ...filters.stages.map((stage) => getBusinessStageLabel(stage)),
+                  ...filters.interests,
+                  filters.city,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </ThemedText>
+              <Pressable
+                onPress={() => applyFilters(EMPTY_DISCOVER_FILTERS)}
+                accessibilityRole="button"
+                hitSlop={Spacing.two}>
+                <ThemedText type="small" themeColor="accentText">
+                  Clear
+                </ThemedText>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <DiscoverFiltersModal
+            visible={filtersOpen}
+            filters={filters}
+            onClose={() => setFiltersOpen(false)}
+            onApply={applyFilters}
           />
 
           <FlatList
@@ -195,8 +265,8 @@ export default function DiscoverScreen() {
             ListEmptyComponent={
               !isLoading && !loadError ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-                  {debouncedSearch
-                    ? 'No one matches that search yet.'
+                  {debouncedSearch || activeFilterCount > 0
+                    ? 'No one matches that search or those filters yet.'
                     : 'No other builders here yet — check back soon.'}
                 </ThemedText>
               ) : null
@@ -305,12 +375,32 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
     marginBottom: Spacing.three,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginBottom: Spacing.three,
+  },
   searchInput: {
+    flex: 1,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three,
     fontSize: 16,
+  },
+  filterButton: {
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  activeFiltersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: -Spacing.two,
     marginBottom: Spacing.three,
+  },
+  activeFiltersText: {
+    flex: 1,
   },
   listContent: {
     gap: Spacing.three,
