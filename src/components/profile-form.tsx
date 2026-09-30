@@ -19,9 +19,31 @@ import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
-import { BioLimit, BusinessStages, InterestOptions, UsernamePattern } from '@/lib/profile-options';
+import {
+  BioLimit,
+  BusinessStages,
+  CityLimit,
+  FullNameLimit,
+  InterestLimit,
+  InterestOptions,
+  isReservedUsername,
+  UsernamePattern,
+} from '@/lib/profile-options';
 import { supabase } from '@/lib/supabase';
 import type { BusinessStage, Profile } from '@/lib/types';
+
+// Friendly messages for the database's profile rules (security item M2).
+// The database decides; these only explain a rejection it already made.
+const ConstraintMessages: Record<string, string> = {
+  profiles_username_format:
+    'Username must be 3-20 characters, using only lowercase letters (a-z), numbers, and underscores.',
+  profiles_username_check:
+    'Username must be 3-20 characters, using only lowercase letters (a-z), numbers, and underscores.',
+  profiles_username_not_reserved: 'That username is reserved. Try another one.',
+  profiles_full_name_length: `Full name can be at most ${FullNameLimit} characters.`,
+  profiles_city_length: `City can be at most ${CityLimit} characters.`,
+  profiles_interests_valid: `Pick up to ${InterestLimit} interests from the list.`,
+};
 
 type ProfileFormProps = {
   initialProfile?: Profile | null;
@@ -103,11 +125,30 @@ export function ProfileForm({
   async function handleSubmit() {
     setErrorMessage(null);
 
-    const trimmedUsername = username.trim();
+    const trimmedUsername = username.trim().toLowerCase();
     if (!UsernamePattern.test(trimmedUsername)) {
-      setErrorMessage(
-        'Username must be 3-20 characters, using only letters, numbers, and underscores.',
-      );
+      setErrorMessage(ConstraintMessages.profiles_username_format);
+      return;
+    }
+    if (isReservedUsername(trimmedUsername)) {
+      setErrorMessage(ConstraintMessages.profiles_username_not_reserved);
+      return;
+    }
+    const trimmedFullName = fullName.trim();
+    if (trimmedFullName.length > FullNameLimit) {
+      setErrorMessage(ConstraintMessages.profiles_full_name_length);
+      return;
+    }
+    const trimmedCity = city.trim();
+    if (trimmedCity.length > CityLimit) {
+      setErrorMessage(ConstraintMessages.profiles_city_length);
+      return;
+    }
+    // Drops anything no longer on the list (older profiles could have
+    // free-form interests), so it doesn't block the save.
+    const validInterests = [...new Set(interests)].filter((item) => InterestOptions.includes(item));
+    if (validInterests.length > InterestLimit) {
+      setErrorMessage(ConstraintMessages.profiles_interests_valid);
       return;
     }
 
@@ -131,11 +172,11 @@ export function ProfileForm({
         .from('profiles')
         .update({
           username: trimmedUsername,
-          full_name: fullName.trim() || null,
+          full_name: trimmedFullName || null,
           bio: bio.trim() || null,
-          city: city.trim() || null,
+          city: trimmedCity || null,
           business_stage: businessStage,
-          interests,
+          interests: validInterests,
         })
         .eq('id', session.user.id);
 
@@ -143,6 +184,16 @@ export function ProfileForm({
         if (updateError.code === '23505') {
           setErrorMessage('That username is already taken. Try another one.');
           return;
+        }
+        // A profile rule (check constraint); the message names it.
+        if (updateError.code === '23514') {
+          const rule = Object.keys(ConstraintMessages).find((name) =>
+            updateError.message.includes(`"${name}"`),
+          );
+          if (rule) {
+            setErrorMessage(ConstraintMessages[rule]);
+            return;
+          }
         }
         // The server's content filter (details names the field).
         if (updateError.code === 'P0001' && updateError.message === 'blocked_content') {
@@ -203,7 +254,7 @@ export function ProfileForm({
                 <ThemedText type="smallBold">Username *</ThemedText>
                 <TextInput
                   value={username}
-                  onChangeText={setUsername}
+                  onChangeText={(text) => setUsername(text.toLowerCase())}
                   placeholder="yourname"
                   placeholderTextColor={theme.textSecondary}
                   autoCapitalize="none"
@@ -220,6 +271,7 @@ export function ProfileForm({
                 <TextInput
                   value={fullName}
                   onChangeText={setFullName}
+                  maxLength={FullNameLimit}
                   placeholder="Full name"
                   placeholderTextColor={theme.textSecondary}
                   style={[
@@ -256,6 +308,7 @@ export function ProfileForm({
                 <TextInput
                   value={city}
                   onChangeText={setCity}
+                  maxLength={CityLimit}
                   placeholder="Boise, ID"
                   placeholderTextColor={theme.textSecondary}
                   style={[
