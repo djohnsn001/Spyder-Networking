@@ -30,6 +30,10 @@ export type RedeemResult =
   | { kind: 'matched'; match: InPersonMatch }
   | { kind: 'invalid' | 'used' | 'expired' | 'self' };
 
+export type PreviewResult =
+  | { kind: 'ok'; other: OtherProfile; expiresAt: string }
+  | { kind: 'invalid' | 'used' | 'expired' | 'self' | 'rate_limited' };
+
 export type TokenStatus =
   | { kind: 'active' | 'expired' | 'not_found' }
   | { kind: 'used'; match: InPersonMatch | null };
@@ -110,6 +114,24 @@ export async function getConnectTokenStatus(token: string): Promise<TokenStatus>
   if (raw.status === 'used') return { kind: 'used', match: toMatch(raw.result) };
   if (raw.status === 'active' || raw.status === 'expired') return { kind: raw.status };
   return { kind: 'not_found' };
+}
+
+// Who a code belongs to, WITHOUT using it up. The link screen shows this and
+// only redeems once the person taps Connect (security item H1).
+export async function previewConnectToken(token: string): Promise<PreviewResult> {
+  const raw = await callRpc('preview_connect_token', { p_token: token });
+  if (raw.outcome === 'ok' && raw.other_profile) {
+    return { kind: 'ok', other: raw.other_profile, expiresAt: raw.expires_at };
+  }
+  if (
+    raw.outcome === 'used' ||
+    raw.outcome === 'expired' ||
+    raw.outcome === 'self' ||
+    raw.outcome === 'rate_limited'
+  ) {
+    return { kind: raw.outcome };
+  }
+  return { kind: 'invalid' };
 }
 
 export async function redeemConnectToken(token: string, city: string | null): Promise<RedeemResult> {
