@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
+import { assuranceFromSession, getAssurance } from '@/lib/mfa';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 
@@ -14,9 +15,14 @@ type AuthContextValue = {
   // An admin suspended this account (account_restrictions). The root layout
   // shows only the suspended screen, Terms, and Delete account.
   isSuspended: boolean;
+  // Two-step verification is on for this account, but no code has been
+  // entered in this session (aal1). The root layout shows only the code
+  // screen until it is (security item H4).
+  needsMfaCode: boolean;
   isLoading: boolean;
   refreshProfile: () => Promise<void>;
   refreshConsent: () => Promise<void>;
+  refreshMfa: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -66,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [needsConsent, setNeedsConsent] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
+  const [needsMfaCode, setNeedsMfaCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -80,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(nextProfile);
         setNeedsConsent(nextNeedsConsent);
         setIsSuspended(nextIsSuspended);
+        setNeedsMfaCode(assuranceFromSession(data.session).needsCode);
       }
       setIsLoading(false);
     });
@@ -98,11 +106,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(nextProfile);
         setNeedsConsent(nextNeedsConsent);
         setIsSuspended(nextIsSuspended);
+        // Read from the session itself: calling supabase.auth.* inside this
+        // callback can deadlock. MFA_CHALLENGE_VERIFIED lands here too, which
+        // lifts the code screen.
+        setNeedsMfaCode(assuranceFromSession(newSession).needsCode);
         setIsLoading(false);
       } else {
         setProfile(null);
         setNeedsConsent(false);
         setIsSuspended(false);
+        setNeedsMfaCode(false);
       }
     });
 
@@ -119,6 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsConsent(await fetchNeedsConsent());
   }
 
+  async function refreshMfa() {
+    if (!session) return;
+    setNeedsMfaCode((await getAssurance()).needsCode);
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -126,9 +144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         needsConsent,
         isSuspended,
+        needsMfaCode,
         isLoading,
         refreshProfile,
         refreshConsent,
+        refreshMfa,
       }}>
       {children}
     </AuthContext.Provider>

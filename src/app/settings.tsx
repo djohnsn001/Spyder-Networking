@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,8 +10,8 @@ import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { CONNECTION_LEVEL_LABEL_IN_SENTENCE } from '@/lib/connect/labels';
-import { getIsAdmin } from '@/lib/events';
 import { contactSupport, LEGAL, openLegalUrl } from '@/lib/legal/config';
+import { getMyAdminStatus, type AdminStatus } from '@/lib/mfa';
 import { setLocationSharing } from '@/lib/map';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
@@ -27,15 +27,19 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const { preference, setPreference } = useThemePreference();
   const [isUpdatingLocationSharing, setIsUpdatingLocationSharing] = useState(false);
-  // Only the team (app_admins) sees the Admin row. The admin screen and every
-  // admin RPC check again on their own.
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Only the team (app_admins) sees an Admin row: "Admin" in a session
+  // verified with a two-step code, "Verify to open Admin" otherwise. The
+  // admin screen and every admin RPC check again on their own (item H4).
+  // Re-checked on focus, so turning on two-step shows Admin straight away.
+  const [admin, setAdmin] = useState<AdminStatus>({ isAdmin: false, needsMfa: false });
 
-  useEffect(() => {
-    getIsAdmin()
-      .then(setIsAdmin)
-      .catch(() => setIsAdmin(false));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getMyAdminStatus()
+        .then(setAdmin)
+        .catch(() => setAdmin({ isAdmin: false, needsMfa: false }));
+    }, []),
+  );
 
   async function handleToggleLocationSharing(value: boolean) {
     if (!session) return;
@@ -68,13 +72,31 @@ export default function SettingsScreen() {
                 ›
               </ThemedText>
             </Pressable>
-            {isAdmin ? (
+            {admin.isAdmin ? (
               <Pressable
                 onPress={() => router.push('/admin')}
                 accessibilityRole="button"
                 accessibilityLabel="Admin"
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
                 <ThemedText type="default">Admin</ThemedText>
+                <ThemedText type="default" themeColor="textSecondary">
+                  ›
+                </ThemedText>
+              </Pressable>
+            ) : null}
+            {admin.needsMfa ? (
+              <Pressable
+                onPress={() => router.push('/two-step')}
+                accessibilityRole="button"
+                accessibilityLabel="Verify to open Admin"
+                accessibilityHint="Admin needs two-step verification"
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+                <View style={styles.rowTextCol}>
+                  <ThemedText type="default">Verify to open Admin</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Admin needs two-step verification
+                  </ThemedText>
+                </View>
                 <ThemedText type="default" themeColor="textSecondary">
                   ›
                 </ThemedText>
@@ -172,6 +194,7 @@ export default function SettingsScreen() {
             Privacy &amp; safety
           </ThemedText>
           <ThemedView type="backgroundElement" style={styles.group}>
+            <LinkRow label="Two-step verification" onPress={() => router.push('/two-step')} />
             <LinkRow label="Blocked users" onPress={() => router.push('/blocked-users')} />
           </ThemedView>
 

@@ -11,6 +11,8 @@
 -- B = blocking, C = reports + admin + suspension, E = content filter,
 -- D = deletion cascade (+ avatar listing).
 
+-- Admin logins carry 'aal': 'aal2': since 20260929030000 (security item H4)
+-- admin power needs two-step verification.
 do $tests$
 declare
   u1 uuid := gen_random_uuid();   -- sharing on
@@ -660,7 +662,7 @@ begin
 
   -- C7: the admin list groups by person, underage first.
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select * into rec from public.admin_list_user_reports() l
   where l.reported_user_id in (rU, rT)
   order by l.has_underage desc, l.latest_report_at desc
@@ -679,7 +681,7 @@ begin
   -- C8: resolving a report updates it and logs it.
   select id into rep from public.user_reports where reported_user_id = rU;
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_resolve_user_report(rep, 'dismissed', 'looked fine');
   reset role;
   ok := v ->> 'outcome' = 'updated'
@@ -693,7 +695,7 @@ begin
   values (rT, 'LC rT event', 43.6, -116.2, now() + interval '1 day', 'public')
   returning id into eT;
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_account_status(rT, 'suspended', 'scam messages');
   perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
   select count(*) into n from public.profiles where id = rT;
@@ -726,7 +728,7 @@ begin
 
   -- C11: lifting the suspension makes them visible again.
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_account_status(rT, null, null);
   perform set_config('request.jwt.claims', json_build_object('sub', rR, 'role', 'authenticated')::text, true);
   select count(*) into n from public.profiles where id = rT;
