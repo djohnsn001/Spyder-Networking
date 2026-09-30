@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,7 +9,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, Spacing } from '@/constants/theme';
 import { useBadgeToasts } from '@/lib/badge-toasts';
-import { CHECKIN_MESSAGE, type CheckinResult, isCheckinToken, redeemCheckin } from '@/lib/checkin';
+import {
+  CHECKIN_MESSAGE,
+  type CheckinResult,
+  isCheckinToken,
+  redeemCheckin,
+  takePendingCheckinToken,
+} from '@/lib/checkin';
 import { useConnectLocation } from '@/lib/connect/use-connect-location';
 import { friendlyRpcError } from '@/lib/rpc';
 
@@ -32,6 +38,11 @@ export default function CheckinScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const invalid = !isCheckinToken(code);
+
+  // This screen is handling the code, so the root layout mustn't replay it.
+  useEffect(() => {
+    takePendingCheckinToken();
+  }, []);
 
   async function handleCheckIn() {
     setError(null);

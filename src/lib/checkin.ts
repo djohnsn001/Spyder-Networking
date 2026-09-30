@@ -10,6 +10,23 @@ const URL_PATTERN = /^bolas:\/\/checkin\/([0-9a-fA-F]{32})\/?$/;
 
 export const CHECKIN_ROTATE_MS = 25_000;
 
+// A check-in link that arrived while the app couldn't use it yet (signed
+// out, or profile setup unfinished). Memory only, like connect links: the
+// root layout opens it once the app is usable. Codes live 30 s, so it's
+// usually expired by then, but the screen explains that and offers the
+// scanner instead of the link silently doing nothing.
+let pendingCheckinToken: string | null = null;
+
+export function setPendingCheckinToken(token: string) {
+  pendingCheckinToken = token;
+}
+
+export function takePendingCheckinToken(): string | null {
+  const token = pendingCheckinToken;
+  pendingCheckinToken = null;
+  return token;
+}
+
 export function checkinUrlFor(token: string) {
   return `bolas://checkin/${token}`;
 }

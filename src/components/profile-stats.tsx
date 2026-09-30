@@ -10,18 +10,37 @@ type ProfileStatsRowProps = {
   onPressInPerson?: () => void;
 };
 
+type Cell = { key: string; value: number; label: string; accessibilityLabel: string; note?: string };
+
 // The Instagram-style numbers row. In-person connections come first and
 // biggest; acquaintances only appear on your own profile (the server sends
-// null for anyone else's).
+// null for anyone else's). Cells share the width equally and labels shrink
+// to fit, so four stats still fit on a narrow phone.
 export function ProfileStatsRow({ stats, onPressInPerson }: ProfileStatsRowProps) {
   if (!stats) return null;
 
-  const cells: { key: string; value: number; label: string; note?: string }[] = [
-    { key: 'attended', value: stats.events_attended, label: 'Events\nattended' },
-    { key: 'hosted', value: stats.events_hosted, label: 'Events\nhosted' },
+  const cells: Cell[] = [
+    {
+      key: 'attended',
+      value: stats.events_attended,
+      label: 'Events attended',
+      accessibilityLabel: `${stats.events_attended} events attended`,
+    },
+    {
+      key: 'hosted',
+      value: stats.events_hosted,
+      label: 'Events hosted',
+      accessibilityLabel: `${stats.events_hosted} events hosted`,
+    },
   ];
   if (stats.acquaintances != null) {
-    cells.push({ key: 'acq', value: stats.acquaintances, label: 'Acquain-\ntances', note: 'Only you' });
+    cells.push({
+      key: 'acquaintances',
+      value: stats.acquaintances,
+      label: 'Acquaintances',
+      note: 'Only you',
+      accessibilityLabel: `${stats.acquaintances} acquaintances, visible only to you`,
+    });
   }
 
   return (
@@ -31,21 +50,29 @@ export function ProfileStatsRow({ stats, onPressInPerson }: ProfileStatsRowProps
         disabled={!onPressInPerson}
         accessibilityRole={onPressInPerson ? 'button' : 'text'}
         accessibilityLabel={`${stats.in_person_connections} in-person connections`}
-        style={({ pressed }) => [styles.primaryCell, pressed && styles.pressed]}>
+        style={({ pressed }) => [styles.cell, styles.primaryCell, pressed && styles.pressed]}>
         <ThemedText style={styles.primaryValue}>{stats.in_person_connections}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-          In-person{'\n'}connections
+        <ThemedText
+          type="small"
+          themeColor="textSecondary"
+          style={styles.label}
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}>
+          In-person connections
         </ThemedText>
       </Pressable>
 
       {cells.map((cell) => (
-        <View
-          key={cell.key}
-          style={styles.cell}
-          accessible
-          accessibilityLabel={`${cell.value} ${cell.label.replace('\n', ' ').replace('-', '')}${cell.note ? ', visible only to you' : ''}`}>
+        <View key={cell.key} style={styles.cell} accessible accessibilityLabel={cell.accessibilityLabel}>
           <ThemedText style={styles.value}>{cell.value}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={[styles.center, styles.label]}>
+          <ThemedText
+            type="small"
+            themeColor="textSecondary"
+            style={styles.label}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}>
             {cell.label}
           </ThemedText>
           {cell.note ? (
@@ -63,23 +90,25 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'center',
     alignSelf: 'stretch',
-    gap: Spacing.three,
+    gap: Spacing.two,
+  },
+  cell: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    // Lines up the smaller numbers with the big one's baseline area.
+    paddingTop: 6,
   },
   primaryCell: {
-    alignItems: 'center',
-    minWidth: 88,
+    // A little more room for the most prominent stat.
+    flex: 1.3,
+    paddingTop: 0,
   },
   primaryValue: {
     fontSize: 30,
     lineHeight: 36,
     fontWeight: 700,
-  },
-  cell: {
-    alignItems: 'center',
-    minWidth: 64,
-    paddingTop: 6,
   },
   value: {
     fontSize: 20,
@@ -89,13 +118,11 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     lineHeight: 16,
+    textAlign: 'center',
   },
   note: {
     fontSize: 10,
     lineHeight: 14,
-  },
-  center: {
-    textAlign: 'center',
   },
   pressed: {
     opacity: 0.8,
