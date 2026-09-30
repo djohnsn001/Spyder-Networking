@@ -1,10 +1,20 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { ConnectButton } from '@/components/connect-button';
+import { LookingForTags } from '@/components/looking-for-tags';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -18,6 +28,12 @@ import {
   sendConnectionRequest,
 } from '@/lib/connections';
 import { DiscoverFiltersModal } from '@/components/discover-filters-modal';
+import {
+  buildMatchReason,
+  fetchSuggestedMatches,
+  getLookingForLabel,
+  type SuggestedMatch,
+} from '@/lib/looking-for';
 import { getBusinessStageLabel } from '@/lib/profile-options';
 import {
   countActiveFilters,
@@ -35,8 +51,15 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export default function DiscoverScreen() {
   const theme = useTheme();
-  const { session } = useAuth();
+  const { session, profile: myProfile } = useAuth();
   const myId = session?.user.id;
+  const isPremium = myProfile?.is_premium ?? false;
+  const myTagsKey = (myProfile?.looking_for ?? []).join(',');
+  const hasMyTags = myTagsKey.length > 0;
+
+  const [suggestions, setSuggestions] = useState<SuggestedMatch[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
 
   const [profiles, setProfiles] = useState<DiscoverProfile[]>([]);
   const [connections, setConnections] = useState<ConnectionRow[]>([]);
@@ -130,12 +153,32 @@ export default function DiscoverScreen() {
     setConnections(await fetchMyConnections(myId));
   }, [myId]);
 
+  // "Suggested for you": free for everyone with Looking For tags. Reloaded
+  // on focus and whenever my own tags change (e.g. after editing them).
+  const loadSuggestions = useCallback(async () => {
+    if (!myId || !myTagsKey) {
+      setSuggestions([]);
+      return;
+    }
+    setSuggestionsLoading(true);
+    setSuggestionsError(null);
+    try {
+      setSuggestions(await fetchSuggestedMatches());
+    } catch (error) {
+      setSuggestionsError(friendlyRpcError(error));
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [myId, myTagsKey]);
+
   // Coming back to the tab keeps the pages already scrolled through, and
-  // only refreshes connection status (it may have changed on a profile).
+  // only refreshes connection status (it may have changed on a profile)
+  // and the suggestions.
   useFocusEffect(
     useCallback(() => {
       void loadConnections();
-    }, [loadConnections]),
+      void loadSuggestions();
+    }, [loadConnections, loadSuggestions]),
   );
 
   function handleRefresh() {
@@ -144,6 +187,117 @@ export default function DiscoverScreen() {
     setLoadError(null);
     fetchFirstPage();
     void loadConnections();
+    void loadSuggestions();
+  }
+
+  function openPremium() {
+    setFiltersOpen(false);
+    router.push('/premium');
+  }
+
+  // Suggestions sit above the results only when you're browsing, not while
+  // searching or filtering.
+  const showSuggestions = !debouncedSearch && activeFilterCount === 0;
+
+  function renderSuggestions() {
+    if (!showSuggestions) return null;
+
+    return (
+      <View style={styles.suggestedSection}>
+        <ThemedText type="smallBold">Suggested for you</ThemedText>
+
+        {!hasMyTags ? (
+          <ThemedView type="backgroundElement" style={styles.promptCard}>
+            <ThemedText type="smallBold">Get matched with the right people</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Add what you&apos;re looking for (hiring, open to work, raising, a co-founder...) and
+              we&apos;ll suggest people looking for the other side.
+            </ThemedText>
+            <Pressable
+              onPress={() => router.push('/edit-profile')}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.promptButton,
+                { backgroundColor: theme.accent },
+                pressed && styles.cardPressed,
+              ]}>
+              <ThemedText type="small" style={{ color: theme.onAccent }}>
+                Add Looking For tags
+              </ThemedText>
+            </Pressable>
+          </ThemedView>
+        ) : suggestionsLoading && suggestions.length === 0 ? (
+          <ActivityIndicator style={styles.suggestedStatus} />
+        ) : suggestionsError ? (
+          <Pressable onPress={() => void loadSuggestions()} accessibilityRole="button">
+            <ThemedText type="small" themeColor="textSecondary" style={styles.suggestedStatus}>
+              {suggestionsError} Tap to try again.
+            </ThemedText>
+          </Pressable>
+        ) : suggestions.length === 0 ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.suggestedStatus}>
+            No matches yet. As more people add tags, they&apos;ll show up here.
+          </ThemedText>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.suggestedRow}>
+            {suggestions.map((match) => {
+              const name = match.full_name || match.username || 'Someone';
+              const firstName = name.split(' ')[0];
+              const reason =
+                buildMatchReason(firstName, match.my_tag, match.their_tag) ??
+                getLookingForLabel(match.their_tag);
+              const details = [
+                match.city,
+                match.mutual_count > 0 ? `${match.mutual_count} mutual` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <Pressable
+                  key={match.id}
+                  onPress={() => router.push(`/user/${match.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${name}'s profile. ${reason ?? ''}`}
+                  style={({ pressed }) => pressed && styles.cardPressed}>
+                  <ThemedView type="backgroundElement" style={styles.suggestedCard}>
+                    <View style={styles.suggestedHeader}>
+                      <Avatar uri={match.avatar_url} name={name} size={40} />
+                      <View style={styles.suggestedNameCol}>
+                        <ThemedText type="smallBold" numberOfLines={1}>
+                          {name}
+                        </ThemedText>
+                        {details ? (
+                          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                            {details}
+                          </ThemedText>
+                        ) : null}
+                      </View>
+                    </View>
+                    {reason ? (
+                      <ThemedText type="small" numberOfLines={2}>
+                        {reason}
+                      </ThemedText>
+                    ) : null}
+                    {match.is_stale ? (
+                      <ThemedText type="small" themeColor="textSecondary" style={styles.staleNote}>
+                        Tags may be out of date
+                      </ThemedText>
+                    ) : null}
+                  </ThemedView>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        <ThemedText type="smallBold" style={styles.everyoneHeading}>
+          Everyone
+        </ThemedText>
+      </View>
+    );
   }
 
   async function handleConnectPress(profile: DiscoverProfile) {
@@ -229,6 +383,7 @@ export default function DiscoverScreen() {
             <View style={styles.activeFiltersRow}>
               <ThemedText type="small" themeColor="textSecondary" style={styles.activeFiltersText} numberOfLines={1}>
                 {[
+                  ...filters.lookingFor.map((tag) => getLookingForLabel(tag)),
                   ...filters.stages.map((stage) => getBusinessStageLabel(stage)),
                   ...filters.interests,
                   filters.city,
@@ -250,8 +405,10 @@ export default function DiscoverScreen() {
           <DiscoverFiltersModal
             visible={filtersOpen}
             filters={filters}
+            isPremium={isPremium}
             onClose={() => setFiltersOpen(false)}
             onApply={applyFilters}
+            onLockedPress={openPremium}
           />
 
           <FlatList
@@ -262,6 +419,7 @@ export default function DiscoverScreen() {
             onRefresh={handleRefresh}
             onEndReached={() => void loadMore()}
             onEndReachedThreshold={0.5}
+            ListHeaderComponent={renderSuggestions()}
             ListEmptyComponent={
               !isLoading && !loadError ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
@@ -327,6 +485,13 @@ export default function DiscoverScreen() {
                           ))}
                         </View>
                       ) : null}
+
+                      <LookingForTags
+                        tags={item.looking_for}
+                        updatedAt={item.tags_updated_at}
+                        align="start"
+                        compact
+                      />
 
                       <ConnectButton
                         status={status}
@@ -440,5 +605,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: 4,
     borderRadius: Spacing.four,
+  },
+  suggestedSection: {
+    gap: Spacing.two,
+  },
+  suggestedRow: {
+    gap: Spacing.two,
+    paddingRight: Spacing.two,
+  },
+  suggestedCard: {
+    width: 240,
+    minHeight: 120,
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  suggestedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  suggestedNameCol: {
+    flex: 1,
+  },
+  suggestedStatus: {
+    paddingVertical: Spacing.two,
+  },
+  staleNote: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  promptCard: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  promptButton: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
+  },
+  everyoneHeading: {
+    marginTop: Spacing.two,
   },
 });

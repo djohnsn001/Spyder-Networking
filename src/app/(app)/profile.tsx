@@ -1,9 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
+import { LookingForTags } from '@/components/looking-for-tags';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -15,14 +16,18 @@ import {
   removeConnection,
   type PendingRequest,
 } from '@/lib/connections';
+import { confirmLookingFor, isLookingForStale, LookingForStaleDays } from '@/lib/looking-for';
 import { getBusinessStageLabel } from '@/lib/profile-options';
+import { friendlyRpcError } from '@/lib/rpc';
 
 export default function ProfileScreen() {
-  const { session, profile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
 
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [connectionCount, setConnectionCount] = useState(0);
+  const [isConfirmingTags, setIsConfirmingTags] = useState(false);
+  const [tagsError, setTagsError] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     if (!session) return;
@@ -61,8 +66,23 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleConfirmTags() {
+    setTagsError(null);
+    setIsConfirmingTags(true);
+    try {
+      await confirmLookingFor();
+      await refreshProfile();
+    } catch (error) {
+      setTagsError(friendlyRpcError(error));
+    } finally {
+      setIsConfirmingTags(false);
+    }
+  }
+
   const displayName = profile?.full_name || profile?.username || session?.user.email || '';
   const businessStageLabel = getBusinessStageLabel(profile?.business_stage ?? null);
+  const hasTags = (profile?.looking_for?.length ?? 0) > 0;
+  const tagsAreStale = hasTags && isLookingForStale(profile?.tags_updated_at);
 
   return (
     <ThemedView style={styles.container}>
@@ -121,7 +141,69 @@ export default function ProfileScreen() {
                 ))}
               </View>
             ) : null}
+
+            {hasTags ? (
+              <LookingForTags tags={profile?.looking_for} updatedAt={profile?.tags_updated_at} />
+            ) : (
+              <Pressable
+                onPress={() => router.push('/edit-profile')}
+                accessibilityRole="button"
+                accessibilityLabel="Add what you're looking for">
+                <ThemedText type="small" themeColor="accentText" style={styles.centerText}>
+                  + Add what you&apos;re looking for
+                </ThemedText>
+              </Pressable>
+            )}
           </ThemedView>
+
+          {tagsAreStale ? (
+            <ThemedView type="backgroundElement" style={styles.staleCard}>
+              <ThemedText type="smallBold">Still looking for the same things?</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Your Looking For tags are over {LookingForStaleDays} days old, so they&apos;ve
+                dropped to the bottom of other people&apos;s suggestions.
+              </ThemedText>
+              <View style={styles.staleActions}>
+                <Pressable
+                  onPress={handleConfirmTags}
+                  disabled={isConfirmingTags}
+                  accessibilityRole="button"
+                  accessibilityLabel="Keep my Looking For tags"
+                  style={({ pressed }) => [
+                    styles.smallButton,
+                    styles.staleButton,
+                    { backgroundColor: AccentColor, opacity: isConfirmingTags ? 0.6 : 1 },
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  {isConfirmingTags ? (
+                    <ActivityIndicator color="#fdfbf7" />
+                  ) : (
+                    <ThemedText type="small" style={styles.buttonLabel}>
+                      Still accurate
+                    </ThemedText>
+                  )}
+                </Pressable>
+                <Pressable
+                  onPress={() => router.push('/edit-profile')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Update my Looking For tags"
+                  style={({ pressed }) => [
+                    styles.smallButton,
+                    styles.staleButton,
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <ThemedText type="small" themeColor="accentText">
+                    Update
+                  </ThemedText>
+                </Pressable>
+              </View>
+              {tagsError ? (
+                <ThemedText type="small" themeColor="error">
+                  {tagsError}
+                </ThemedText>
+              ) : null}
+            </ThemedView>
+          ) : null}
 
           <Pressable
             onPress={() => router.push('/connect')}
@@ -299,5 +381,23 @@ const styles = StyleSheet.create({
   },
   declineButton: {
     backgroundColor: 'transparent',
+  },
+  staleCard: {
+    alignSelf: 'stretch',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.four,
+    borderRadius: Spacing.four,
+    maxWidth: MaxContentWidth,
+  },
+  staleActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  staleButton: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    minWidth: 110,
   },
 });
