@@ -1,5 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+
+import { authStorage } from '@/lib/auth-storage';
 
 // The app uses Supabase's PUBLISHABLE key (sb_publishable_...), which is safe
 // to ship: it only grants what Row Level Security allows. Never a secret key
@@ -51,7 +52,7 @@ const fetchWithClockSkewRetry: typeof fetch = async (input, init) => {
 export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
   global: { fetch: fetchWithClockSkewRetry },
   auth: {
-    storage: AsyncStorage,
+    storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

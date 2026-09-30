@@ -106,6 +106,12 @@
         {
           "motionPermission": "Bolas detects when you tap phones with someone."
         }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
       ]
     ],
     "experiments": {
