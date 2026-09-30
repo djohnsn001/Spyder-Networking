@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -18,6 +18,7 @@ import {
   sendConnectionRequest,
 } from '@/lib/connections';
 import { getBusinessStageLabel } from '@/lib/profile-options';
+import { RateLimitError } from '@/lib/rate-limit';
 import { supabase } from '@/lib/supabase';
 import type { ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
 
@@ -78,7 +79,8 @@ export default function DiscoverScreen() {
       }
       setConnections(await fetchMyConnections(myId));
     } catch (error) {
-      console.error('Failed to update connection', error);
+      if (error instanceof RateLimitError) Alert.alert(error.title, error.message);
+      else console.error('Failed to update connection', error);
     } finally {
       setPendingId(null);
     }

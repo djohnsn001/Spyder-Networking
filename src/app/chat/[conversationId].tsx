@@ -29,6 +29,7 @@ import {
   sendMessage,
   subscribeToConversationMessages,
 } from '@/lib/messages';
+import { RateLimitError } from '@/lib/rate-limit';
 import { openReport, openSafetyMenu } from '@/lib/safety';
 import { useUnreadMessages } from '@/lib/unread-messages';
 import type { Message, Profile } from '@/lib/types';
@@ -207,7 +208,8 @@ export default function ChatScreen() {
         return [sent, ...withoutTempOrDupe];
       });
     } catch (error) {
-      console.error('Failed to send message', error);
+      if (error instanceof RateLimitError) Alert.alert(error.title, error.message);
+      else console.error('Failed to send message', error);
       setMessages((current) => current.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)));
     }
   }
