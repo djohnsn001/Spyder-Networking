@@ -20,13 +20,10 @@
 const { createAdminClient, loadSeedEnv } = require("./seed-env");
 const { SEED_EMAIL_DOMAIN, PROFILES } = require("./seed-data");
 
-
 async function main() {
   // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
   const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
-
-
 
   const supabase = createAdminClient({ url, serviceKey });
 

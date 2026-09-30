@@ -38,7 +38,6 @@ const PORTRAIT_GROUP = {
 };
 const PORTRAITS_PER_GROUP = 100;
 
-
 // Random portrait numbers with no repeats within a group, so no two seed
 // accounts end up with the same face.
 function pickPortraits() {
@@ -61,8 +60,6 @@ async function main() {
   // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
   const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
-
-
 
   const supabase = createAdminClient({ url, serviceKey });
 

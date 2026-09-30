@@ -27,13 +27,16 @@ function quotedListAfter(text, marker, file, opener = "[") {
   return [...text.slice(open + 1, close).matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]);
 }
 
-// The newest migration containing `fnName`, and the list inside it.
+// The newest migration that (re)defines `fnName`, and the list inside it.
+// Only `create [or replace] function`: other migrations may grant or revoke
+// on the function without changing its list.
 function newestMigrationList(fnName) {
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+  const definition = new RegExp(`create\\s+(or\\s+replace\\s+)?function\\s+public\\.${fnName}\\(`, "i");
   for (const file of files.reverse()) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-    const marker = `function public.${fnName}(`;
-    if (sql.includes(marker)) return { file, list: quotedListAfter(sql, marker, file, "array[") };
+    const found = sql.match(definition);
+    if (found) return { file, list: quotedListAfter(sql, found[0], file, "array[") };
   }
   throw new Error(`No migration defines public.${fnName}()`);
 }

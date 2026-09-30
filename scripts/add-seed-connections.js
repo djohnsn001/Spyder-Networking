@@ -20,7 +20,6 @@
 const { createAdminClient, loadSeedEnv } = require("./seed-env");
 const { SEED_EMAIL_DOMAIN, SEED_TO_SEED_EDGES } = require("./seed-data");
 
-
 function pairKey(a, b) {
   return [a, b].sort().join("::");
 }
@@ -29,8 +28,6 @@ async function main() {
   // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
   const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
-
-
 
   const supabase = createAdminClient({ url, serviceKey });
 

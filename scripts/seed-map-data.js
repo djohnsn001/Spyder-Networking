@@ -26,14 +26,12 @@ const crypto = require("crypto");
 const { createAdminClient, loadSeedEnv } = require("./seed-env");
 const { SEED_EMAIL_DOMAIN, PROFILES, SEED_TO_SEED_EDGES } = require("./seed-data");
 
-
 const YOUR_EMAIL = "zanemechling07@gmail.com";
 
 async function main() {
   // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
   const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
-
 
   console.log(`This will create ${PROFILES.length} fake profiles + connections to ${YOUR_EMAIL} and each other.`);
 

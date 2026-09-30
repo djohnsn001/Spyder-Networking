@@ -71,6 +71,10 @@ Supabase gives each project two kinds of key (Project Settings → API Keys). Th
 2. `npm run seed:map` (dry run), then `npm run seed:map -- --confirm`.
 3. Clean up with `npm run seed:delete` (dry run), then `npm run seed:delete -- --confirm`.
 
+**Old avatar photos** uploaded before security item M3 can still carry GPS data. `npm run
+avatars:clean-exif` lists them (dry run); `npm run avatars:clean-exif -- --apply` re-saves them
+without it. Try it on dev first; for production add `--i-know-this-is-production`.
+
 Every seed script refuses to run if `.env.seed.local` points at production, unless you add
 `--i-know-this-is-production`. The secret key never goes in `.env`: that file is only for the
 app's public `EXPO_PUBLIC_` values, which ship inside the app.

@@ -54,6 +54,13 @@ still read their own data.
 
 ## Merging with the other security branches
 
+All done on `security/all` (2026-09-30). `20260930000000_security_fixups.sql` restores the aal2
+hint in `_require_admin`, and adds two more rules on top of this table: every table listed above
+gets a restrictive "Two-step code required" policy, and every API request (tables and RPCs) runs
+`_check_request()`, which refuses a password-only session of an account with two-step on.
+
+Original notes:
+
 - **h1** `preview_connect_token` (new RPC, writes a rate-limit log): add
   `is_suspended(auth.uid())` → `not_allowed`, like block_user.
 - **h2** replaces create/redeem_connect_token: the migration needs nothing. The connect_tokens

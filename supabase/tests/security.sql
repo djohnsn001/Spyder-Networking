@@ -2338,9 +2338,16 @@ begin
           and (select count(*) from public.get_my_profile()) = 1
           and (select location_sharing from public.get_my_profile()) = 'connections'
           and (select id from public.get_my_profile()) = wS;
+    -- Writing my own settings still works without being able to read the
+    -- column back (Settings / Map toggle).
+    err := null;
+    begin update public.profiles set location_sharing = 'off' where id = wS;
+    exception when others then err := sqlstate;
+    end;
+    ok := ok and err is null and (select location_sharing from public.get_my_profile()) = 'off';
     reset role;
     report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
-      || '  W7 others'' settings unreadable (' || n || '/4); get_my_profile returns only my full row';
+      || '  W7 others'' settings unreadable (' || n || '/4); get_my_profile = my full row; own toggle still saves';
     if not ok then fails := fails + 1; end if;
 
     -- W8: get_mutuals returns only the four card columns.
