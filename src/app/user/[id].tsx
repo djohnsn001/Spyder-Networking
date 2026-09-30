@@ -21,17 +21,18 @@ import {
 } from '@/lib/connections';
 import { getOrStartDirectConversation } from '@/lib/messages';
 import { getBusinessStageLabel } from '@/lib/profile-options';
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/profiles';
 import { RateLimitError } from '@/lib/rate-limit';
 import { openSafetyMenu } from '@/lib/safety';
 import { supabase } from '@/lib/supabase';
-import type { ConnectionRow, Profile } from '@/lib/types';
+import type { ConnectionRow, PublicProfile } from '@/lib/types';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const myId = session?.user.id;
 
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [connections, setConnections] = useState<ConnectionRow[]>([]);
   const [mutualCount, setMutualCount] = useState(0);
   const [connectionCount, setConnectionCount] = useState(0);
@@ -44,7 +45,7 @@ export default function UserProfileScreen() {
     if (!id || !myId) return;
     setIsLoading(true);
     const [profileResult, myConnections, mutuals, connectionTotal] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+      supabase.from('profiles').select(PUBLIC_PROFILE_COLUMNS).eq('id', id).maybeSingle(),
       fetchMyConnections(myId),
       fetchMutualCount(id),
       fetchConnectionCount(id),

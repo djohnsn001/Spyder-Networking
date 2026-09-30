@@ -1,6 +1,13 @@
+import { CONNECTION_PROFILE_COLUMNS, PROFILE_SUMMARY_COLUMNS } from '@/lib/profiles';
 import { isRateLimited, RateLimitError } from '@/lib/rate-limit';
 import { supabase } from '@/lib/supabase';
-import type { ConnectionLevel, ConnectionRow, ConnectionStatus, Profile } from '@/lib/types';
+import type {
+  ConnectionLevel,
+  ConnectionProfile,
+  ConnectionRow,
+  ConnectionStatus,
+  ProfileSummary,
+} from '@/lib/types';
 
 // All connection rows the current user is part of, either side.
 export async function fetchMyConnections(userId: string): Promise<ConnectionRow[]> {
@@ -78,7 +85,7 @@ export async function removeConnection(connectionId: string) {
 export type PendingRequest = {
   connectionId: string;
   createdAt: string;
-  requester: Profile;
+  requester: ProfileSummary;
 };
 
 // Requests other people have sent to the current user, still awaiting a
@@ -98,7 +105,7 @@ export async function fetchPendingRequests(userId: string): Promise<PendingReque
 
   const { data: requesters, error: profilesError } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PROFILE_SUMMARY_COLUMNS)
     .in(
       'id',
       rows.map((row) => row.requester_id),
@@ -120,7 +127,7 @@ export async function fetchPendingRequests(userId: string): Promise<PendingReque
 }
 
 // Profiles of everyone the current user is accepted-connected with.
-export async function fetchConnectionProfiles(userId: string): Promise<Profile[]> {
+export async function fetchConnectionProfiles(userId: string): Promise<ProfileSummary[]> {
   const { data: rows, error } = await supabase
     .from('connections')
     .select('requester_id, addressee_id')
@@ -136,7 +143,7 @@ export async function fetchConnectionProfiles(userId: string): Promise<Profile[]
 
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PROFILE_SUMMARY_COLUMNS)
     .in('id', otherIds);
   if (profilesError) {
     console.error('Failed to load connection profiles', profilesError);
@@ -150,7 +157,7 @@ export type ConnectionWithProfile = {
   level: ConnectionLevel;
   metAt: string | null;
   metCity: string | null;
-  profile: Profile;
+  profile: ConnectionProfile;
 };
 
 // Everyone the current user is accepted-connected with, plus the level and
@@ -173,7 +180,7 @@ export async function fetchConnectionsByLevel(userId: string): Promise<Connectio
 
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('*')
+    .select(CONNECTION_PROFILE_COLUMNS)
     .in('id', rows.map(otherIdFor));
   if (profilesError) {
     console.error('Failed to load connection profiles', profilesError);

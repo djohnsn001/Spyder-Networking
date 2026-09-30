@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { assuranceFromSession, getAssurance } from '@/lib/mfa';
+import { OWN_PROFILE_COLUMNS } from '@/lib/profiles';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 
@@ -30,7 +31,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 async function fetchProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select(OWN_PROFILE_COLUMNS)
     .eq('id', userId)
     .maybeSingle();
   if (error) {

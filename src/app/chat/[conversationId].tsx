@@ -32,7 +32,7 @@ import {
 import { RateLimitError } from '@/lib/rate-limit';
 import { openReport, openSafetyMenu } from '@/lib/safety';
 import { useUnreadMessages } from '@/lib/unread-messages';
-import type { Message, Profile } from '@/lib/types';
+import type { Message, ProfileSummary } from '@/lib/types';
 
 const PAGE_SIZE = 30;
 // Messages from the same sender within this long of each other render as
@@ -100,7 +100,7 @@ export default function ChatScreen() {
   const keyboardPadding = useKeyboardPadding(insets.bottom);
   const { refreshUnreadCount } = useUnreadMessages();
 
-  const [otherUser, setOtherUser] = useState<Profile | null>(null);
+  const [otherUser, setOtherUser] = useState<ProfileSummary | null>(null);
   const [isConnected, setIsConnected] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
