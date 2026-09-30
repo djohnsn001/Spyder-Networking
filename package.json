@@ -6,9 +6,11 @@
     "@expo/ui": "~57.0.19",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.116.0",
+    "aes-js": "^3.1.2",
     "expo": "~57.0.24",
     "expo-camera": "~57.0.5",
     "expo-constants": "~57.0.18",
+    "expo-crypto": "~57.0.3",
     "expo-dev-client": "~57.0.19",
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
@@ -20,6 +22,7 @@
     "expo-linking": "~57.0.10",
     "expo-location": "~57.0.19",
     "expo-router": "~57.0.22",
+    "expo-secure-store": "~57.0.4",
     "expo-sensors": "~57.0.3",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",
+    "@types/aes-js": "^3.1.4",
     "@types/react": "~19.2.2",
     "supabase": "^2.117.0",
     "typescript": "~6.0.3"
