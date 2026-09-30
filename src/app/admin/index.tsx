@@ -21,12 +21,12 @@ import {
   adminSetEventStatus,
   adminSetHostStatus,
   formatEventTime,
-  getIsAdmin,
   REPORT_REASONS,
   type AdminHostStatus,
   type AdminUser,
   type FlaggedEvent,
 } from '@/lib/events';
+import { getMyAdminStatus } from '@/lib/mfa';
 import { friendlyRpcError } from '@/lib/rpc';
 import {
   adminListUserReports,
@@ -54,12 +54,17 @@ function confirm(title: string, message: string, confirmLabel: string, onConfirm
 
 export default function AdminScreen() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  // On the admin list but this session wasn't verified with a two-step code.
+  const [needsMfa, setNeedsMfa] = useState(false);
   const [tab, setTab] = useState<Tab>('people');
   const theme = useTheme();
 
   useEffect(() => {
-    getIsAdmin()
-      .then(setIsAdmin)
+    getMyAdminStatus()
+      .then((status) => {
+        setIsAdmin(status.isAdmin);
+        setNeedsMfa(status.needsMfa);
+      })
       .catch(() => setIsAdmin(false));
   }, []);
 
@@ -74,9 +79,19 @@ export default function AdminScreen() {
   if (!isAdmin) {
     return (
       <ThemedView style={styles.centered}>
-        <ThemedText type="default" themeColor="textSecondary">
-          Nothing here.
-        </ThemedText>
+        {needsMfa ? (
+          <View style={styles.mfaNotice}>
+            <ThemedText type="default" style={styles.centerText}>
+              Admin needs two-step verification. Turn it on (or sign in again with your code) to
+              open Admin.
+            </ThemedText>
+            <AdminButton label="Two-step verification" onPress={() => router.replace('/two-step')} />
+          </View>
+        ) : (
+          <ThemedText type="default" themeColor="textSecondary">
+            Nothing here.
+          </ThemedText>
+        )}
       </ThemedView>
     );
   }
@@ -561,6 +576,11 @@ const styles = StyleSheet.create({
   },
   centerText: {
     textAlign: 'center',
+  },
+  mfaNotice: {
+    alignItems: 'center',
+    gap: Spacing.three,
+    maxWidth: 360,
   },
   tabs: {
     flexDirection: 'row',

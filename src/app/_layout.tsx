@@ -11,10 +11,14 @@ import { UnreadMessagesProvider } from '@/lib/unread-messages';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { session, profile, needsConsent, isSuspended, isLoading } = useAuth();
+  const { session, profile, needsConsent, isSuspended, needsMfaCode, isLoading } = useAuth();
   const hasUsername = !!profile?.username;
-  // Not suspended, past the consent gate (Terms + 18+), and past profile setup.
-  const isReady = !isSuspended && !needsConsent && hasUsername;
+  // Two-step code entered (if the account uses it) — checked before anything
+  // else, so a password alone gets nowhere (security item H4).
+  const mfaOk = !needsMfaCode;
+  // Past the code, not suspended, past the consent gate (Terms + 18+), and
+  // past profile setup.
+  const isReady = mfaOk && !isSuspended && !needsConsent && hasUsername;
   const pathname = usePathname();
 
   // A bolas://connect/<code> link that arrived while signed out (or before
@@ -35,13 +39,19 @@ function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!!session}>
-        {/* The consent gate comes first: accounts that haven't accepted the
-            current Terms see only this (plus Delete account). */}
-        <Stack.Protected guard={isSuspended}>
+        {/* Two-step code first: with it on, a signed-in session sees only
+            the code screen until a code is entered. */}
+        <Stack.Protected guard={!mfaOk}>
+          <Stack.Screen name="mfa-verify" />
+        </Stack.Protected>
+
+        {/* Then suspension, then the consent gate: accounts that haven't
+            accepted the current Terms see only that (plus Delete account). */}
+        <Stack.Protected guard={mfaOk && isSuspended}>
           <Stack.Screen name="suspended" />
         </Stack.Protected>
 
-        <Stack.Protected guard={!isSuspended && needsConsent}>
+        <Stack.Protected guard={mfaOk && !isSuspended && needsConsent}>
           <Stack.Screen name="legal/accept" />
         </Stack.Protected>
 
@@ -75,6 +85,10 @@ function RootNavigator() {
             options={{ headerShown: true, headerTitle: 'Blocked users' }}
           />
           <Stack.Screen
+            name="two-step"
+            options={{ headerShown: true, headerTitle: 'Two-step verification' }}
+          />
+          <Stack.Screen
             name="legal/licenses"
             options={{ headerShown: true, headerTitle: 'Open-source licenses' }}
           />
@@ -85,16 +99,19 @@ function RootNavigator() {
           />
         </Stack.Protected>
 
-        <Stack.Protected guard={!isSuspended && !needsConsent && !hasUsername}>
+        <Stack.Protected guard={mfaOk && !isSuspended && !needsConsent && !hasUsername}>
           <Stack.Screen name="profile-setup" />
         </Stack.Protected>
 
-        {/* Reachable from anywhere once signed in, including the consent
-            gate, so nobody is trapped. */}
-        <Stack.Screen
-          name="delete-account"
-          options={{ headerShown: true, headerTitle: 'Delete account' }}
-        />
+        {/* Reachable from anywhere once signed in (including the consent
+            gate, so nobody is trapped), but only after the two-step code:
+            a stolen password mustn't be able to delete the account. */}
+        <Stack.Protected guard={mfaOk}>
+          <Stack.Screen
+            name="delete-account"
+            options={{ headerShown: true, headerTitle: 'Delete account' }}
+          />
+        </Stack.Protected>
       </Stack.Protected>
 
       <Stack.Protected guard={!session}>

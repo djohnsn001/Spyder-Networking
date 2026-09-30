@@ -68,8 +68,9 @@ can say no. Bolas still works without them, but the features above won't.
 
 ### Information collected automatically
 
-- **Login and security data:** your account's sign-in times, and the IP address and device type
-  (user agent) of your current login session. We use these to keep you logged in and to protect
+- **Login and security data:** your account's sign-in times, the IP address and device type
+  (user agent) of your current login session, and, if you turn on two-step verification, the
+  secret your authenticator app uses to make codes. We use these to keep you logged in and to protect
   accounts.
 - **Server logs:** our hosting provider records technical logs of requests (such as IP address,
   time, and which part of the service was used). These are kept for about a day.

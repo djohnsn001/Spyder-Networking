@@ -10,6 +10,8 @@
 -- Sections: A = hosting trust, B = write lock + validation, C = location,
 -- D = attendee privacy, E = reports + admin.
 
+-- Admin logins carry 'aal': 'aal2': since 20260929030000 (security item H4)
+-- admin power needs two-step verification.
 do $tests$
 declare
   -- Hosts
@@ -138,7 +140,7 @@ begin
 
   -- A8: the admin (1 day old) posts public and skips the limits: 6 creates
   -- in a row (over both the active and the daily limit) all succeed.
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   n := 0;
   for i in 1..6 loop
     v := public.create_event('Admin event ' || i, null, null, 43.6, -116.2, t0, null, 'public');
@@ -166,7 +168,7 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A10 status for trusted account: can_host_public, reason null';
   if not ok then fails := fails + 1; end if;
 
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.get_my_hosting_status();
   ok := (v ->> 'is_admin')::boolean and (v ->> 'can_host_public')::boolean;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  A11 status for admin: is_admin, can_host_public';
@@ -272,7 +274,7 @@ begin
   if not ok then fails := fails + 1; end if;
 
   -- B5: no false positive for a phrase that only starts the same way.
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.create_event('Founders DM meetup', 'Information session', null, 43.6, -116.2, t0, null, 'connections');
   ok := v ->> 'outcome' = 'created';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B5 "DM meetup" / "Information" are not blocked';
@@ -375,7 +377,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
   select count(*) into n from public.events where id = eid;
   ok := ok and n = 0;
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select count(*) into n from public.events where id = eid;
   ok := ok and n = 1;
   delete from public.events where id = eid;
@@ -448,7 +450,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
   select count(*) into n from public.event_summaries s where s.id = eid and s.exact_latitude = 43.615;
   ok := n = 1;
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select count(*) into n from public.event_summaries s where s.id = eid and s.exact_latitude = 43.615;
   ok := ok and n = 1;
   perform set_config('request.jwt.claims', json_build_object('sub', f1, 'role', 'authenticated')::text, true);
@@ -572,7 +574,7 @@ begin
   select count(*) into n from public.get_event_attendees(eid);
   ok := n = 4
     and (select count(*) from public.get_event_attendees(eid) g where g.is_host and g.user_id = u_trusted) = 1;
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select count(*) into n from public.get_event_attendees(eid);
   ok := ok and n = 4;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D4 host and admin see all 4 attendees';
@@ -627,7 +629,7 @@ begin
   if not ok then fails := fails + 1; end if;
 
   -- D7: admins are exempt (35 taps on someone else's event).
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   succ := 0;
   for i in 1..35 loop
     begin
@@ -684,7 +686,7 @@ begin
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', f3, 'role', 'authenticated')::text, true);
   insert into public.event_attendees (event_id, user_id) values (eid_a, f3);
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   delete from public.events where id = eid_a;
   get diagnostics n = row_count;
   ok := n = 1;
@@ -784,7 +786,7 @@ begin
   if not ok then fails := fails + 1; end if;
 
   -- E6: the flagged list shows the event with its exact spot and report breakdown.
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select * into rec from public.admin_list_flagged_events() f where f.event_id = eid;
   ok := rec.event_id is not null and rec.status = 'hidden' and rec.open_reports = 4 and rec.counted_reports = 3
     and rec.reports_by_reason = '{"spam": 2, "fake": 1, "unsafe_location": 1}'::jsonb
@@ -822,7 +824,7 @@ begin
 
   -- E9: remove -> removed; the host still sees it but can't delete or edit it;
   -- others can't see it; open reports actioned.
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_event_status(eid, 'removed', null);
   ok := v ->> 'outcome' = 'updated';
   v := public.admin_set_event_status(eid, 'hidden', null);
@@ -846,7 +848,7 @@ begin
 
   -- E10: suspending a host removes their upcoming events and blocks hosting.
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_host_status(u_appr, 'suspended', 'Spam events');
   ok := v ->> 'outcome' = 'updated' and (v ->> 'events_removed')::int = 3;
   perform set_config('request.jwt.claims', json_build_object('sub', u_appr, 'role', 'authenticated')::text, true);
@@ -863,7 +865,7 @@ begin
   -- E11: clearing the row drops them back to the automatic rule (1 day old ->
   -- connections-only); approving unlocks public.
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_host_status(u_appr, null, null);
   ok := v ->> 'outcome' = 'updated';
   perform set_config('request.jwt.claims', json_build_object('sub', u_appr, 'role', 'authenticated')::text, true);
@@ -871,7 +873,7 @@ begin
   ok := ok and v ->> 'outcome' = 'public_locked';
   v := public.create_event('Back again', null, null, 43.6, -116.2, t0, null, 'connections');
   ok := ok and v ->> 'outcome' = 'created';
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   v := public.admin_set_host_status(u_appr, 'approved', null);
   v2 := public.admin_set_host_status(u_appr, 'banned', null);
   ok := ok and v ->> 'outcome' = 'updated' and v2 ->> 'outcome' = 'invalid';
@@ -885,7 +887,7 @@ begin
   reset role;
   select upper(left(username, 9)) into err from public.profiles where id = u_appr;
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
   select * into rec from public.admin_find_user(err) f where f.user_id = u_appr;
   ok := rec.user_id is not null and rec.host_status = 'approved'
     and (rec.hosting ->> 'can_host_public')::boolean;

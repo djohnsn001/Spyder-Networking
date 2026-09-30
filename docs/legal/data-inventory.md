@@ -26,6 +26,7 @@ same commit.
 | Password | sign-up | `auth.users.encrypted_password` (bcrypt hash; the plain password is never stored) | login | nobody | until account deletion | Supabase |
 | Account ID (UUID) | created by Supabase at sign-up | `auth.users.id` = `profiles.id` | links every row to the account | signed-in users (it's in every profile row and deep link) | until account deletion | Supabase |
 | Sign-up and sign-in times, email-confirmed time | Supabase Auth | `auth.users` (`created_at`, `last_sign_in_at`, `email_confirmed_at`, …) | auth; account age for hosting and report trust | only the team | until account deletion | Supabase |
+| Two-step verification (optional): authenticator secret, name, created/verified times | Settings → Two-step verification | `auth.mfa_factors` (managed by Supabase Auth) | a second sign-in step; required for admins (security item H4) | nobody (the user sees only that it's on) | until turned off or account deletion | Supabase |
 | Session IP address and device user-agent | Supabase Auth, on each sign-in / token refresh | `auth.sessions.ip`, `auth.sessions.user_agent` | keeping the login session; security | only the team | while the session exists (deleted on log-out or session expiry) | Supabase |
 | Username | profile setup (**required**) | `profiles.username` | identity in the app, search, @mentions in UI | all signed-in users | until account deletion | Supabase |
 | Full name | profile (optional) | `profiles.full_name` | shown on profile | all signed-in users | until account deletion | Supabase |

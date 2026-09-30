@@ -399,12 +399,9 @@ export async function reportEvent(
 }
 
 // ---------------------------------------------------------------------------
-// Admin (every RPC refuses non-admins; the admin screen also checks first)
+// Admin (every RPC refuses non-admins, and admins without a two-step code;
+// the admin screen checks first via getMyAdminStatus in lib/mfa)
 // ---------------------------------------------------------------------------
-
-export async function getIsAdmin(): Promise<boolean> {
-  return (await callRpc<boolean>('is_admin')) === true;
-}
 
 export type FlaggedReport = {
   reason: ReportReason;
