@@ -1,19 +1,45 @@
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+
 import { supabase } from '@/lib/supabase';
 
+// Longest side of an uploaded profile photo, in pixels. The avatars bucket
+// also rejects files over 2 MB (security item M3).
+const MaxAvatarPixels = 1024;
+const AvatarJpegQuality = 0.8;
+
+// Re-draws the photo as a fresh JPEG, at most 1024 px on its longest side.
+// Re-encoding writes only the pixels, so EXIF metadata from the camera (GPS
+// location, device, time) is left behind; the picker's exif: false only
+// hides it from the app, it doesn't remove it from the file. Rotation from
+// the camera is applied to the pixels first, so the photo isn't sideways.
+async function toAvatarJpeg(uri: string): Promise<string> {
+  let image = await ImageManipulator.manipulate(uri).renderAsync();
+  if (Math.max(image.width, image.height) > MaxAvatarPixels) {
+    const resized = await ImageManipulator.manipulate(image)
+      .resize(image.width >= image.height ? { width: MaxAvatarPixels } : { height: MaxAvatarPixels })
+      .renderAsync();
+    image.release();
+    image = resized;
+  }
+  try {
+    const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: AvatarJpegQuality });
+    return result.uri;
+  } finally {
+    image.release();
+  }
+}
+
 // Uploads a picked image to the avatars bucket under the user's own folder
-// (required by the storage RLS policies) and returns its public URL.
-export async function uploadAvatar(
-  userId: string,
-  uri: string,
-  mimeType: string | undefined,
-): Promise<string> {
-  const arraybuffer = await fetch(uri).then((res) => res.arrayBuffer());
-  const fileExt = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const path = `${userId}/${Date.now()}.${fileExt}`;
+// (required by the storage RLS policies) and returns its public URL. Always
+// uploads the re-encoded JPEG, never the original file.
+export async function uploadAvatar(userId: string, uri: string): Promise<string> {
+  const jpegUri = await toAvatarJpeg(uri);
+  const arraybuffer = await fetch(jpegUri).then((res) => res.arrayBuffer());
+  const path = `${userId}/${Date.now()}.jpg`;
 
   const { error: uploadError } = await supabase.storage
     .from('avatars')
-    .upload(path, arraybuffer, { contentType: mimeType ?? 'image/jpeg' });
+    .upload(path, arraybuffer, { contentType: 'image/jpeg' });
   if (uploadError) throw uploadError;
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(path);

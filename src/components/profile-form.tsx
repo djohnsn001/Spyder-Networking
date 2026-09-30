@@ -69,13 +69,16 @@ export function ProfileForm({
       mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.8,
+      // Don't hand the app the photo's EXIF (GPS etc.). uploadAvatar also
+      // re-encodes the image, which is what strips it from the file.
+      exif: false,
     });
     if (result.canceled || !result.assets[0]) return;
 
     setIsUploadingAvatar(true);
     try {
       const asset = result.assets[0];
-      const publicUrl = await uploadAvatar(session.user.id, asset.uri, asset.mimeType);
+      const publicUrl = await uploadAvatar(session.user.id, asset.uri);
       const { error } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
