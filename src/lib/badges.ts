@@ -1,5 +1,6 @@
 import { callRpc } from '@/lib/rpc';
 import { supabase } from '@/lib/supabase';
+import type { Profile } from '@/lib/types';
 
 // Badges and profile stats (migration 20260930030000). The database decides
 // who earns what; the app only reads, marks toasts seen, and picks featured
@@ -55,6 +56,20 @@ export function fetchBadgeDefinitions(): Promise<Map<string, BadgeDefinition>> {
     });
   }
   return definitionsPromise;
+}
+
+// What's still missing before the server counts a profile as complete and
+// hands out its member number. Mirrors public._profile_is_complete; if that
+// starts requiring a verified phone (require_phone in _badge_rules), add it
+// here too. Empty once complete (the number is kept even if a field is
+// cleared later).
+export function missingForMemberNumber(profile: Profile | null): string[] {
+  if (!profile || profile.profile_completed_at) return [];
+  const missing: string[] = [];
+  if (!profile.full_name?.trim()) missing.push('your name');
+  if (!profile.city?.trim()) missing.push('your city');
+  if (!profile.business_stage) missing.push('your business stage');
+  return missing;
 }
 
 // "#047": numbered badges always show three digits.

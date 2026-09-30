@@ -11,7 +11,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
-import { type EarnedBadge, fetchProfileStats, type ProfileStats } from '@/lib/badges';
+import {
+  type EarnedBadge,
+  fetchProfileStats,
+  missingForMemberNumber,
+  type ProfileStats,
+} from '@/lib/badges';
 import {
   acceptConnectionRequest,
   fetchPendingRequests,
@@ -98,6 +103,7 @@ export default function ProfileScreen() {
   const businessStageLabel = getBusinessStageLabel(profile?.business_stage ?? null);
   const hasTags = (profile?.looking_for?.length ?? 0) > 0;
   const tagsAreStale = hasTags && isLookingForStale(profile?.tags_updated_at);
+  const missingFields = missingForMemberNumber(profile);
 
   return (
     <ThemedView style={styles.container}>
@@ -174,6 +180,34 @@ export default function ProfileScreen() {
               onChanged={() => void reloadBadges()}
             />
           </ThemedView>
+
+          {missingFields.length > 0 ? (
+            <ThemedView type="backgroundElement" style={styles.staleCard}>
+              <ThemedText type="smallBold">Claim your member number</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Add {missingFields.slice(0, -1).join(', ')}
+                {missingFields.length > 1 ? ' and ' : ''}
+                {missingFields[missingFields.length - 1]} to finish your profile. Finished profiles get a
+                numbered member badge, and the first 200 are Founders.
+              </ThemedText>
+              <View style={styles.staleActions}>
+                <Pressable
+                  onPress={() => router.push('/edit-profile')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Finish your profile"
+                  style={({ pressed }) => [
+                    styles.smallButton,
+                    styles.staleButton,
+                    { backgroundColor: AccentColor },
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <ThemedText type="small" style={styles.buttonLabel}>
+                    Finish profile
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </ThemedView>
+          ) : null}
 
           {tagsAreStale ? (
             <ThemedView type="backgroundElement" style={styles.staleCard}>
