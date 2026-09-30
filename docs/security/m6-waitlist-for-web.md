@@ -4,6 +4,20 @@ Hey! I'm locking down the `waitlist` table in Supabase. Right now anyone with th
 insert any text, and the "already exists" error (23505) tells anyone whether an email is on the
 list. The fix is a database function the form calls instead of inserting into the table.
 
+## 0. Switch to the new publishable key
+
+Supabase is retiring the old `anon` key (the long `eyJ...` one). The site's `.env.production` still
+uses it as `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and once I turn the legacy keys off the waitlist form
+stops working. The replacement is the **publishable** key: Supabase dashboard → the production
+project (`fhevoocpcnrjxyjvitai`) → Project Settings → API Keys → `sb_publishable_...`. It's just as
+public as the anon key, so it's fine in the browser and in the build env.
+
+1. Swap the value in `.env.production`, `.env.local`, and the Cloudflare build env. Renaming the
+   variable to `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is optional; if you rename it, update
+   `src/lib/supabase.ts` to match. `createClient(url, key)` works the same with either key.
+2. Deploy, and check the form still works.
+3. Tell me, so I can turn the legacy keys off.
+
 ## 1. Switch the form to the RPC (please do this first)
 
 In `src/components/WaitlistForm.tsx`, replace the insert:
@@ -95,6 +109,8 @@ const { data, error } = await supabase.functions.invoke("join-waitlist", {
 
 ## Order
 
+0. You switch to the publishable key (section 0) and deploy. Tell me, and I turn the legacy keys
+   off.
 1. You deploy the RPC form (section 1, without `notifyN8n`). Tell me.
 2. I switch on the welcome-email webhook and remove direct inserts.
 3. Turnstile: you add the widget and send me the secret key. I build `join-waitlist`, then you
