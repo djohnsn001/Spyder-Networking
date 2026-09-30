@@ -54,8 +54,11 @@ export function MatchCard({
   const myName = me?.full_name || me?.username || '';
   const canUndo = match.outcome !== 'already_connected';
 
-  const [undoState, setUndoState] = useState<UndoState>(canUndo ? 'available' : 'expired');
+  const [rawUndoState, setUndoState] = useState<UndoState>(canUndo ? 'available' : 'expired');
   const [secondsLeft, setSecondsLeft] = useState(UNDO_SECONDS);
+  // The countdown reaching 0 ends the undo window.
+  const undoState: UndoState =
+    rawUndoState === 'available' && secondsLeft === 0 ? 'expired' : rawUndoState;
   const [error, setError] = useState<string | null>(null);
   const [isStartingChat, setIsStartingChat] = useState(false);
 
@@ -85,10 +88,6 @@ export function MatchCard({
     const interval = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(interval);
   }, [undoState]);
-
-  useEffect(() => {
-    if (secondsLeft === 0 && undoState === 'available') setUndoState('expired');
-  }, [secondsLeft, undoState]);
 
   const strandStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: strand.value }] }));
   const ringProps = useAnimatedProps(() => ({

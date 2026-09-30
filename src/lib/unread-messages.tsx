@@ -12,22 +12,25 @@ const UnreadMessagesContext = createContext<UnreadMessagesContextValue | undefin
 
 export function UnreadMessagesProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
-  const [unreadCount, setUnreadCount] = useState(0);
+  const userId = session?.user.id ?? null;
+  // Remembered with whose count it is, so a different account (or signing
+  // out) never shows the previous account's number.
+  const [unread, setUnread] = useState<{ userId: string; count: number } | null>(null);
+  const unreadCount = unread && unread.userId === userId ? unread.count : 0;
 
   const refreshUnreadCount = useCallback(async () => {
-    if (!session) {
-      setUnreadCount(0);
-      return;
-    }
-    setUnreadCount(await getTotalUnreadCount());
-  }, [session]);
+    if (!userId) return;
+    const count = await getTotalUnreadCount();
+    setUnread({ userId, count });
+  }, [userId]);
 
   useEffect(() => {
-    void refreshUnreadCount();
-  }, [refreshUnreadCount]);
+    if (!userId) return;
+    getTotalUnreadCount().then((count) => setUnread({ userId, count }));
+  }, [userId]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!userId) return;
     // Any insert anywhere could change the total (a new message for us, or
     // one in a conversation we're not currently looking at) — refetching
     // the real count from the database is simpler and safer than trying to
@@ -37,7 +40,7 @@ export function UnreadMessagesProvider({ children }: { children: ReactNode }) {
       void refreshUnreadCount();
     });
     return unsubscribe;
-  }, [session, refreshUnreadCount]);
+  }, [userId, refreshUnreadCount]);
 
   return (
     <UnreadMessagesContext.Provider value={{ unreadCount, refreshUnreadCount }}>

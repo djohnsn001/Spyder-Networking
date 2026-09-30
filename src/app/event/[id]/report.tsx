@@ -64,7 +64,7 @@ export default function ReportEventScreen() {
           Thanks, we&apos;ll review this {LEGAL.REPORT_REVIEW_PROMISE}.
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.centerText}>
-          Reports are private. The host isn't told who reported their event.
+          Reports are private. The host isn&apos;t told who reported their event.
         </ThemedText>
         <Pressable
           onPress={() => router.back()}
@@ -96,7 +96,7 @@ export default function ReportEventScreen() {
             </Pressable>
           </View>
 
-          <ThemedText type="smallBold">What's wrong with it?</ThemedText>
+          <ThemedText type="smallBold">What&apos;s wrong with it?</ThemedText>
           <View style={styles.reasons}>
             {REPORT_REASONS.map((option) => {
               const selected = reason === option.value;

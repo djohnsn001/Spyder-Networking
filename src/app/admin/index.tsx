@@ -139,14 +139,17 @@ function UserReportsTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setGroups(await adminListUserReports());
-      setError(null);
-    } catch (err) {
-      setError(friendlyRpcError(err));
-    }
-  }, []);
+  const load = useCallback(
+    () =>
+      adminListUserReports().then(
+        (next) => {
+          setGroups(next);
+          setError(null);
+        },
+        (err) => setError(friendlyRpcError(err)),
+      ),
+    [],
+  );
 
   useEffect(() => {
     void load();
@@ -290,14 +293,17 @@ function FlaggedTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setEvents(await adminListFlaggedEvents());
-      setError(null);
-    } catch (err) {
-      setError(friendlyRpcError(err));
-    }
-  }, []);
+  const load = useCallback(
+    () =>
+      adminListFlaggedEvents().then(
+        (next) => {
+          setEvents(next);
+          setError(null);
+        },
+        (err) => setError(friendlyRpcError(err)),
+      ),
+    [],
+  );
 
   useEffect(() => {
     void load();

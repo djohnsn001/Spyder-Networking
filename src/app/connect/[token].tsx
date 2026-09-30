@@ -51,20 +51,24 @@ export default function ConnectLinkScreen() {
   const [other, setOther] = useState<OtherProfile | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [match, setMatch] = useState<InPersonMatch | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [resultMessage, setMessage] = useState<string | null>(null);
+  const message = isConnectToken(code) ? resultMessage : RESULT_MESSAGE.invalid;
   const location = useConnectLocation({ active: true, watch: true });
   const { fix } = location;
+
+  // A different code (a new link while this screen is open) starts over.
+  const [shownCode, setShownCode] = useState(code);
+  if (code !== shownCode) {
+    setShownCode(code);
+    setOther(null);
+    setMatch(null);
+    setMessage(null);
+  }
 
   useEffect(() => {
     // This screen is handling the code, so the root layout mustn't replay it.
     takePendingConnectToken();
-    setOther(null);
-    setMatch(null);
-    setMessage(null);
-    if (!isConnectToken(code)) {
-      setMessage(RESULT_MESSAGE.invalid);
-      return;
-    }
+    if (!isConnectToken(code)) return;
     let cancelled = false;
     (async () => {
       try {

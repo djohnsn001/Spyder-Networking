@@ -32,7 +32,7 @@ export function EventAttendees({
   if (isHost) {
     return (
       <View style={styles.container}>
-        <ThemedText type="smallBold">Who's going</ThemedText>
+        <ThemedText type="smallBold">Who&apos;s going</ThemedText>
         <ScrollView style={styles.hostList} nestedScrollEnabled>
           {attendees.map((attendee) => {
             const name = displayName(attendee);
@@ -58,7 +58,7 @@ export function EventAttendees({
           })}
         </ScrollView>
         <ThemedText type="small" themeColor="textSecondary">
-          You're the host: only you can see everyone.
+          You&apos;re the host: only you can see everyone.
         </ThemedText>
       </View>
     );

@@ -201,7 +201,7 @@ export function EventForm({
                   </ThemedText>
                 </View>
                 <ThemedText type="small" themeColor="textSecondary">
-                  The place can't change after posting. To move the event, delete it and drop a
+                  The place can&apos;t change after posting. To move the event, delete it and drop a
                   new pin.
                 </ThemedText>
               </>
@@ -258,7 +258,7 @@ export function EventForm({
               />
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
-                No end time — it'll leave the map 3 hours after it starts.
+                No end time — it&apos;ll leave the map 3 hours after it starts.
               </ThemedText>
             )}
             {renderError(errors.endsAt)}

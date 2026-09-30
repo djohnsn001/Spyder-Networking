@@ -49,12 +49,16 @@ export function ScanPanel({
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ready for the next person whenever the panel becomes active again
-  // (e.g. after the match card closes).
+  // (e.g. after the match card closes): clear the old message while
+  // rendering (React's pattern for resetting state when a prop changes),
+  // and unblock the scanner in the effect.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (active) setMessage(null);
+  }
   useEffect(() => {
-    if (active) {
-      busyRef.current = false;
-      setMessage(null);
-    }
+    if (active) busyRef.current = false;
     return () => {
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     };

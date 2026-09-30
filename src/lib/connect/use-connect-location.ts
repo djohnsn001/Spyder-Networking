@@ -43,17 +43,22 @@ export function useConnectLocation({
   const [city, setCity] = useState<string | null>(null);
   const geocodedRef = useRef(false);
 
-  const refreshPermission = useCallback(async () => {
-    const response = await Location.getForegroundPermissionsAsync();
-    setCanAskAgain(response.canAskAgain);
-    setStatus(
-      response.granted ? 'granted' : response.canAskAgain ? 'undetermined' : 'denied',
-    );
-  }, []);
-
+  // Re-check whenever the screen becomes active (the user may have changed
+  // it in Settings meanwhile).
   useEffect(() => {
-    if (active) void refreshPermission();
-  }, [active, refreshPermission]);
+    if (!active) return;
+    let cancelled = false;
+    Location.getForegroundPermissionsAsync().then((response) => {
+      if (cancelled) return;
+      setCanAskAgain(response.canAskAgain);
+      setStatus(
+        response.granted ? 'granted' : response.canAskAgain ? 'undetermined' : 'denied',
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
 
   const requestPermission = useCallback(async () => {
     const response = await Location.requestForegroundPermissionsAsync();

@@ -45,6 +45,11 @@ function formatMessageTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+// Id for a message shown before the server has saved it.
+function makeTempId() {
+  return `temp-${Date.now()}-${Math.random()}`;
+}
+
 // Manual keyboard tracking instead of KeyboardAvoidingView: that component
 // measures its own on-screen position to know how much to pad, and that
 // measurement is unreliable here because of the inverted FlatList (its
@@ -60,7 +65,7 @@ function formatMessageTime(iso: string): string {
 // real keyboard instead of chasing it. Android doesn't reliably emit
 // "will" events, so it falls back to "did" there.
 function useKeyboardPadding(baseInset: number): Animated.Value {
-  const padding = useRef(new Animated.Value(0)).current;
+  const [padding] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -175,7 +180,7 @@ export default function ChatScreen() {
     if (!trimmed || !myId || !conversationId) return;
     setDraft('');
 
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const tempId = makeTempId();
     const optimisticMessage: ChatMessage = {
       id: tempId,
       conversation_id: conversationId,

@@ -46,26 +46,35 @@ export default function DiscoverScreen() {
   const requestId = useRef(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => {
+      const next = search.trim();
+      if (next === debouncedSearch) return;
+      // A new search starts again from page 1 (loaded by the effect below).
+      setIsLoading(true);
+      setLoadError(null);
+      setDebouncedSearch(next);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, debouncedSearch]);
 
-  const loadFirstPage = useCallback(async () => {
+  // Page 1 for the current search. Callers set isLoading first; state
+  // changes here happen only when the answer arrives.
+  const fetchFirstPage = useCallback(() => {
     if (!myId) return;
     const thisRequest = ++requestId.current;
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      const page = await fetchDiscoverPage(null, debouncedSearch);
-      if (thisRequest !== requestId.current) return;
-      setProfiles(page);
-      setHasMore(page.length === DISCOVER_PAGE_SIZE);
-    } catch (error) {
-      if (thisRequest !== requestId.current) return;
-      setLoadError(friendlyRpcError(error));
-    } finally {
-      if (thisRequest === requestId.current) setIsLoading(false);
-    }
+    fetchDiscoverPage(null, debouncedSearch).then(
+      (page) => {
+        if (thisRequest !== requestId.current) return;
+        setProfiles(page);
+        setHasMore(page.length === DISCOVER_PAGE_SIZE);
+        setIsLoading(false);
+      },
+      (error) => {
+        if (thisRequest !== requestId.current) return;
+        setLoadError(friendlyRpcError(error));
+        setIsLoading(false);
+      },
+    );
   }, [myId, debouncedSearch]);
 
   // Next page, starting after the last profile already on screen. After a
@@ -94,8 +103,8 @@ export default function DiscoverScreen() {
 
   // New search text (and the first visit) starts again from page 1.
   useEffect(() => {
-    void loadFirstPage();
-  }, [loadFirstPage]);
+    fetchFirstPage();
+  }, [fetchFirstPage]);
 
   const loadConnections = useCallback(async () => {
     if (!myId) return;
@@ -111,7 +120,10 @@ export default function DiscoverScreen() {
   );
 
   function handleRefresh() {
-    void loadFirstPage();
+    if (!myId) return;
+    setIsLoading(true);
+    setLoadError(null);
+    fetchFirstPage();
     void loadConnections();
   }
 

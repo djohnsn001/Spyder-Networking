@@ -174,7 +174,7 @@ export default function EventDetailScreen() {
   const isCreator = event.creator_id === myId;
   const isActive = event.status === 'active';
   const creatorName = event.creator_full_name || event.creator_username || 'Someone';
-  const hasEnded = new Date(event.effective_ends_at).getTime() <= Date.now();
+  const hasEnded = isPast(event.effective_ends_at);
   const goingLabel = event.going_count === 1 ? '1 going' : `${event.going_count} going`;
 
   return (
@@ -435,3 +435,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+function isPast(iso: string) {
+  return new Date(iso).getTime() <= Date.now();
+}
