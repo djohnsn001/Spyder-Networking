@@ -46,22 +46,28 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "prestart": "node ./scripts/check-env.js",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "licenses": "node ./scripts/generate-licenses.js",
     "contrast": "node ./scripts/check-contrast.js",
+    "check-env": "node ./scripts/check-env.js",
     "seed:map": "node ./scripts/seed-map-data.js",
     "seed:map:connections": "node ./scripts/add-seed-connections.js",
     "seed:map:locations": "node ./scripts/update-seed-locations.js",
     "seed:map:avatars": "node ./scripts/update-seed-avatars.js",
+    "seed:delete": "node ./scripts/delete-seed-users.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "db:login": "supabase login",
-    "db:link": "supabase link --project-ref fhevoocpcnrjxyjvitai",
+    "db:link": "npm run db:link:dev",
+    "db:link:dev": "supabase link --project-ref REPLACE_WITH_DEV_PROJECT_REF",
+    "db:link:prod": "supabase link --project-ref fhevoocpcnrjxyjvitai",
     "db:diff": "supabase db diff --linked",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "prebuild": "node ./scripts/check-env.js"
   },
   "private": true
 }

@@ -6,61 +6,29 @@
  * positions change (e.g. re-arranging the layout) without wanting to
  * delete and recreate the accounts and their connections.
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY in .env (same as the other seed scripts).
+ * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for the DEV
+ * project), never .env; see scripts/seed-env.js. The service key bypasses
+ * Row Level Security, so it's never used by the app, never prefixed
+ * EXPO_PUBLIC_, and never committed. Refuses to run against production
+ * (fhevoocpcnrjxyjvitai) unless --i-know-this-is-production is passed.
  *
  * Usage:
  *   node scripts/update-seed-locations.js            # dry run
  *   node scripts/update-seed-locations.js --confirm   # actually update
  */
 
-const fs = require("fs");
-const path = require("path");
+const { createAdminClient, loadSeedEnv } = require("./seed-env");
 const { SEED_EMAIL_DOMAIN, PROFILES } = require("./seed-data");
 
-function loadEnv() {
-  const envPath = path.join(__dirname, "..", ".env");
-  const vars = {};
-  if (fs.existsSync(envPath)) {
-    for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq === -1) continue;
-      const key = trimmed.slice(0, eq).trim();
-      let value = trimmed.slice(eq + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      vars[key] = value;
-    }
-  }
-  return { ...vars, ...process.env };
-}
 
 async function main() {
-  const env = loadEnv();
-  const url = env.EXPO_PUBLIC_SUPABASE_URL;
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  // Reads .env.seed.local and exits unless the target is safe (see seed-env.js).
+  const { url, serviceKey } = loadSeedEnv();
   const confirmed = process.argv.includes("--confirm");
 
-  if (!url) {
-    console.error("Missing EXPO_PUBLIC_SUPABASE_URL in .env");
-    process.exit(1);
-  }
-  if (!serviceKey) {
-    console.error("Missing SUPABASE_SERVICE_ROLE_KEY in .env.");
-    process.exit(1);
-  }
 
-  console.log(`Target Supabase project: ${url}`);
 
-  const { createClient } = require("@supabase/supabase-js");
-  const supabase = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const supabase = createAdminClient({ url, serviceKey });
 
   const { data: users, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 });
   if (listError) throw listError;
