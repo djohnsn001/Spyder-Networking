@@ -47,6 +47,7 @@ same commit.
 | Where/when you met (`met_city`, `met_at`) | in-person connect; city comes from the phone's reverse-geocode, else either person's profile city | `connections` | "Met in Boise, Sep 2026" | the two people in it | as long as the connection | Supabase (the phone asked Apple/Google for the city name; see G) |
 | Undo snapshot | in-person connect | `connections.undo_until`, `undo_snapshot` | 30-second undo | the two people | cleared ~1 minute after the undo window ends (cleanup job) | Supabase |
 | QR code token + result | "My code" screen | `connect_tokens` (token, owner, who scanned, result incl. both people's username/full name/avatar URL) | one-time 60 s QR codes | nobody directly (owner reads status through an RPC) | deleted after 1 hour (cleanup job runs every minute) | Supabase |
+| QR-link preview log (who previewed a code, and when; no code, no result) | opening a `bolas://connect/...` link | `connect_token_preview_log` | rate limit: 20 previews per minute | nobody (server only) | deleted after 1 hour (on the next preview by anyone) | Supabase |
 | Phone-tap ("bump") event | accelerometer on device detects the tap; phone sends **precise GPS lat/lng**, GPS accuracy, city name | `bump_events` | matching two phones that tapped together | nobody (server only) | coordinates erased as soon as the tap stops waiting (matched / ambiguous / no match), and within ~1 minute if the app never checks back; rows deleted after 10 minutes (cleanup job runs every minute) | Supabase |
 
 ## C. Location
