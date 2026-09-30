@@ -2043,7 +2043,7 @@ begin
       select array_agg(d.id order by d.ord), (array_agg(d.cursor order by d.ord desc))[1]
         into page_ids, prev_cursor
       from public.discover_profiles(cur, 30) with ordinality as d(id, username, full_name,
-        avatar_url, bio, interests, business_stage, city, cursor, ord);
+        avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
       exit when page_ids is null;
       seen := seen || page_ids;
       cur := prev_cursor;
@@ -2069,7 +2069,7 @@ begin
     select array_agg(d.id order by d.ord), (array_agg(d.cursor order by d.ord desc))[1]
       into page_ids, cur
     from public.discover_profiles(null, 10) with ordinality as d(id, username, full_name,
-      avatar_url, bio, interests, business_stage, city, cursor, ord);
+      avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
     reset role;
     insert into auth.users (id, email, aud, role) values
       (late, late || '@test.bolas.invalid', 'authenticated', 'authenticated');
@@ -2079,7 +2079,7 @@ begin
     perform set_config('role', 'authenticated', true);
     select array_agg(d.id order by d.ord) into seen
     from public.discover_profiles(cur, 10) with ordinality as d(id, username, full_name,
-      avatar_url, bio, interests, business_stage, city, cursor, ord);
+      avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
     reset role;
     ok := page_ids = array(select others[k] from generate_series(35, 26, -1) k)
           and seen = array(select others[k] from generate_series(25, 16, -1) k)
