@@ -11,7 +11,7 @@
 -- (check which project is linked first: cat supabase/.temp/project-ref)
 --
 -- The base URLs below must match public.avatar_url_allowed() in the
--- migration. Add the dev project's URL there and here together.
+-- migration. Change them there and here together.
 --
 -- Zero rows = ready for step 2. For each row it lists, either the owner
 -- re-uploads their photo, or the photo is cleared (a write, so NOT here):
@@ -23,7 +23,7 @@ set transaction read only;
 with allowed_base(url) as (
   values
     ('https://fhevoocpcnrjxyjvitai.supabase.co')  -- production
-    -- , ('https://REPLACE_WITH_DEV_PROJECT_REF.supabase.co')  -- dev
+  , ('https://ojrtebubjvkhpiryilum.supabase.co')  -- dev (bolas-dev)
 )
 select
   p.id,

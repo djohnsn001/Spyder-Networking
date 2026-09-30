@@ -18,8 +18,8 @@
 --     so it would silently stop protecting anything. Supabase also limits
 --     who can set database-level custom settings.
 --   * The URL is not a secret (it ships inside the app).
--- The allowed URLs live in one function, so adding the dev project later is
--- a one-line `create or replace` with no constraint changes. Allowing BOTH of
+-- The allowed URLs (production and dev) live in one function, so changing
+-- them later is a `create or replace` with no constraint changes. Allowing BOTH of
 -- our projects in each database is safe: either one only logs requests to us.
 --
 -- NOT VALID: the rule applies to every new insert/update from now on, but
@@ -38,17 +38,16 @@ as $$
   select p_url is null
     or starts_with(
       p_url,
-      -- PRODUCTION project URL (matches EXPO_PUBLIC_SUPABASE_URL).
+      -- PRODUCTION project.
       'https://fhevoocpcnrjxyjvitai.supabase.co/storage/v1/object/public/avatars/'
         || p_profile_id::text || '/'
     )
-    -- DEV project: uncomment with the real ref once it exists.
-    -- or starts_with(
-    --   p_url,
-    --   'https://REPLACE_WITH_DEV_PROJECT_REF.supabase.co/storage/v1/object/public/avatars/'
-    --     || p_profile_id::text || '/'
-    -- )
-    ;
+    or starts_with(
+      p_url,
+      -- DEV project (bolas-dev).
+      'https://ojrtebubjvkhpiryilum.supabase.co/storage/v1/object/public/avatars/'
+        || p_profile_id::text || '/'
+    );
 $$;
 
 comment on function public.avatar_url_allowed(uuid, text) is
