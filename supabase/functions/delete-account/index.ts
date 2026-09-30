@@ -6,6 +6,7 @@
 //   -> 200 { outcome: 'deleted' }
 //   -> 400 { outcome: 'confirm_mismatch' | 'invalid' }
 //   -> 401 { outcome: 'not_authenticated' }
+//   -> 403 { outcome: 'mfa_required' }      two-step is on, code not entered
 //   -> 405 { outcome: 'method_not_allowed' }
 //   -> 500 { outcome: 'failed' }            safe to retry
 //
@@ -43,6 +44,22 @@ export default {
     const email: string | undefined = ctx.userClaims?.email ?? ctx.jwtClaims?.email;
     if (!userId) return reply('not_authenticated', 401);
 
+    const admin = ctx.supabaseAdmin;
+
+    // Two-step verification: with an authenticator app turned on, a
+    // password-only (aal1) session can't delete the account. The app shows
+    // the code screen first; this stops direct calls with a stolen password.
+    if (ctx.jwtClaims?.aal !== 'aal2') {
+      const { data: mfa, error: mfaError } = await admin.auth.admin.mfa.listFactors({ userId });
+      if (mfaError) {
+        console.error('delete-account: factor lookup failed', mfaError.status);
+        return reply('failed', 500);
+      }
+      if ((mfa?.factors ?? []).some((f: { status: string }) => f.status === 'verified')) {
+        return reply('mfa_required', 403);
+      }
+    }
+
     let confirm = '';
     try {
       const body = await req.json();
@@ -50,8 +67,6 @@ export default {
     } catch {
       return reply('invalid', 400);
     }
-
-    const admin = ctx.supabaseAdmin;
 
     // Last guard against accidents: they typed their own username.
     const { data: profile, error: profileError } = await admin

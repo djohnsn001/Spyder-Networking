@@ -99,8 +99,14 @@ const encryptedStorage = {
       if (!stored.startsWith(ENCRYPTED_PREFIX)) {
         // First launch after the update: a plain session from the old
         // version. Encrypt it in place (the same AsyncStorage entry, so the
-        // plain copy is overwritten) and keep the user signed in.
-        await AsyncStorage.setItem(name, await encrypt(stored));
+        // plain copy is overwritten) and keep the user signed in. If the
+        // Keychain can't be written right now, keep the plain copy and try
+        // again next launch rather than signing the user out.
+        try {
+          await AsyncStorage.setItem(name, await encrypt(stored));
+        } catch (error) {
+          if (__DEV__) console.warn('[auth-storage] encrypting the saved session failed', error);
+        }
         return stored;
       }
 

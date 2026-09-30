@@ -22,6 +22,7 @@
 --   T = current Terms required to message / connect / RSVP / host (M5).
 --   U = website waitlist (item M6).
 --   V = Discover paging RPC (item M8).
+--   W = fix-ups from reviewing every branch together (security/all).
 
 do $tests$
 declare
@@ -2164,6 +2165,212 @@ begin
           and has_function_privilege('authenticated', 'public.discover_profiles(text, integer, text)', 'execute');
     report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
       || '  V10 anon + no-user refused (' || n || '/2); returns only the 9 Discover columns';
+    if not ok then fails := fails + 1; end if;
+  end;
+  -- #####################################################################
+  -- security/all: W = fix-ups found reviewing every branch together
+  -- (20260930000000_security_fixups.sql).
+  -- #####################################################################
+  reset role;
+  declare
+    wO uuid := gen_random_uuid();   -- QR code owner
+    wS uuid := gen_random_uuid();   -- scanner / attacker
+    wF uuid := gen_random_uuid();   -- has two-step on (verified factor)
+    wN uuid := gen_random_uuid();   -- no two-step
+    wM uuid := gen_random_uuid();   -- mutual of wO and wS
+    wAdm uuid := gen_random_uuid(); -- admin
+    ok boolean;
+    err text;
+    hint text;
+    n int;
+    v jsonb;
+    tok text;
+    conv uuid;
+    base text := 'https://fhevoocpcnrjxyjvitai.supabase.co/storage/v1/object/public/avatars/';
+  begin
+    insert into auth.users (id, email, aud, role, created_at)
+    select id, id || '@test.bolas.invalid', 'authenticated', 'authenticated', now() - interval '30 days'
+    from unnest(array[wO, wS, wF, wN, wM, wAdm]) as id;
+    insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+    select id, public._current_terms_version(), now(), now()
+    from unnest(array[wO, wS, wF, wN, wM, wAdm]) as id;
+    update public.profiles
+    set username = 'w_' || left(replace(id::text, '-', ''), 12), location_sharing = 'connections'
+    where id in (wO, wS, wF, wN, wM, wAdm);
+    insert into public.app_admins (user_id) values (wAdm);
+    insert into public.connections (requester_id, addressee_id, status) values
+      (wO, wM, 'accepted'), (wS, wM, 'accepted'), (wF, wN, 'accepted');
+    insert into auth.mfa_factors (user_id, factor_type, status) values (wF, 'totp', 'verified');
+
+    -- W1: an admin at aal1 is refused, and the hint says why (H4's hint
+    -- survives M5's rewrite of _require_admin).
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wAdm, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    err := null; hint := null;
+    begin perform public.admin_list_flagged_events();
+    exception when others then err := sqlstate; get stacked diagnostics hint = pg_exception_hint;
+    end;
+    reset role;
+    ok := err = '42501' and hint ilike '%two-step%';
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W1 aal1 admin refused with the two-step hint (' || coalesce(err, 'no error') || ')';
+    if not ok then fails := fails + 1; end if;
+
+    -- W2 (attack): guessing where a code's owner is. Three far-away tries
+    -- burn the code; a 4th try from right next to the owner gets 'used'.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wO, 'role', 'authenticated')::text, true);
+    tok := public.create_connect_token(43.61504, -116.20207, 15) ->> 'token';
+    perform set_config('request.jwt.claims', json_build_object('sub', wS, 'role', 'authenticated')::text, true);
+    n := 0;
+    if public.redeem_connect_token(tok, null, 43.70, -116.20, 15) ->> 'outcome' = 'too_far' then n := n + 1; end if;
+    if public.redeem_connect_token(tok, null, 43.50, -116.20, 15) ->> 'outcome' = 'too_far' then n := n + 1; end if;
+    if public.redeem_connect_token(tok, null, 43.62, -116.30, 15) ->> 'outcome' = 'too_far' then n := n + 1; end if;
+    v := public.redeem_connect_token(tok, null, 43.6151, -116.2021, 15);
+    perform set_config('request.jwt.claims', json_build_object('sub', wO, 'role', 'authenticated')::text, true);
+    ok := n = 3 and v ->> 'outcome' = 'used'
+          and public.get_connect_token_status(tok) ->> 'status' is distinct from 'active'
+          and not public.is_connected_to(wS);
+    reset role;
+    ok := ok and (select lat is null and used_by is null from public.connect_tokens where token = tok);
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W2 3 too_far tries burn the code, location erased (' || n || '/3, then ' || coalesce(v ->> 'outcome', 'null') || ')';
+    if not ok then fails := fails + 1; end if;
+
+    -- W3 (attack): claiming terrible accuracy can't stretch "together" past
+    -- 1 km (900 m + 900 m used to allow 1.8 km). 1.5 km away -> too_far;
+    -- two tries (one GPS glitch) still leave the code usable.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wO, 'role', 'authenticated')::text, true);
+    tok := public.create_connect_token(43.61504, -116.20207, 900) ->> 'token';
+    perform set_config('request.jwt.claims', json_build_object('sub', wS, 'role', 'authenticated')::text, true);
+    v := public.redeem_connect_token(tok, null, 43.6285, -116.20207, 900);
+    ok := v ->> 'outcome' = 'too_far';
+    v := public.redeem_connect_token(tok, null, 43.6151, -116.2021, 15);
+    ok := ok and v ->> 'outcome' in ('created', 'upgraded', 'already_connected');
+    reset role;
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W3 1.5 km with 900 m accuracy -> too_far; next scan nearby still connects';
+    if not ok then fails := fails + 1; end if;
+
+    -- W4 (attack): avatar URLs that climb out of the owner's folder or add
+    -- extra path/query parts are refused; a normal one is fine.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wN, 'role', 'authenticated')::text, true);
+    n := 0;
+    begin update public.profiles set avatar_url = base || wN || '/../' || wO || '/x.jpg' where id = wN;
+    exception when check_violation then n := n + 1; end;
+    begin update public.profiles set avatar_url = base || wN || '/..%2f' || wO || '.jpg' where id = wN;
+    exception when check_violation then n := n + 1; end;
+    begin update public.profiles set avatar_url = base || wN || '/a/b.jpg' where id = wN;
+    exception when check_violation then n := n + 1; end;
+    begin update public.profiles set avatar_url = base || wN || '/1.jpg?x=https://evil.example' where id = wN;
+    exception when check_violation then n := n + 1; end;
+    begin update public.profiles set avatar_url = base || wN || '/1727650000000.jpg' where id = wN;
+    exception when check_violation then n := n + 100; end;
+    reset role;
+    ok := n = 4 and (select avatar_url from public.profiles where id = wN) = base || wN || '/1727650000000.jpg';
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W4 avatar URL with .. / %2f / subfolder / query refused (' || n || '/4), plain file name OK';
+    if not ok then fails := fails + 1; end if;
+
+    -- W5 (attack): a password-only (aal1) session of an account with two-step
+    -- on can't read or write through the API: the pre-request check refuses,
+    -- and the tables themselves show nothing.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wF, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    err := null;
+    begin perform public._check_request(); exception when others then err := sqlstate || ' ' || sqlerrm; end;
+    select count(*) into n from public.profiles;
+    ok := err = '42501 mfa_required' and n = 0;
+    select count(*) into n from public.connections;
+    ok := ok and n = 0;
+    err := null;
+    begin
+      update public.profiles set bio = 'stolen password' where id = wF;
+      get diagnostics n = row_count;
+    exception when others then err := sqlstate;
+    end;
+    ok := ok and (n = 0 or err = '42501');
+    select count(*) into n from storage.objects;
+    ok := ok and n = 0;
+    reset role;
+    ok := ok and (select bio is distinct from 'stolen password' from public.profiles where id = wF);
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W5 two-step account at aal1: request refused (mfa_required), tables empty, writes blocked';
+    if not ok then fails := fails + 1; end if;
+
+    -- W6: the same account at aal2 works, and an account without two-step
+    -- at aal1 is unaffected.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wF, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    err := null;
+    begin perform public._check_request(); exception when others then err := sqlstate; end;
+    conv := public.get_or_create_direct_conversation(wN);
+    insert into public.messages (conversation_id, sender_id, body) values (conv, wF, 'hi at aal2');
+    select count(*) into n from public.profiles where id = wN;
+    ok := err is null and n = 1;
+    perform set_config('request.jwt.claims', json_build_object('sub', wN, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    err := null;
+    begin perform public._check_request(); exception when others then err := sqlstate; end;
+    select count(*) into n from public.messages where conversation_id = conv;
+    ok := ok and err is null and n = 1;
+    reset role;
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W6 two-step account at aal2 works; account without two-step unaffected at aal1';
+    if not ok then fails := fails + 1; end if;
+
+    -- W7 (attack): other people's settings aren't readable; your own full
+    -- row comes from get_my_profile().
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wS, 'role', 'authenticated')::text, true);
+    n := 0;
+    begin perform location_sharing from public.profiles where id = wO;
+    exception when insufficient_privilege then n := n + 1; end;
+    begin perform notifications_enabled from public.profiles where id = wO;
+    exception when insufficient_privilege then n := n + 1; end;
+    begin perform updated_at from public.profiles where id = wO;
+    exception when insufficient_privilege then n := n + 1; end;
+    begin perform * from public.profiles where id = wO;
+    exception when insufficient_privilege then n := n + 1; end;
+    ok := n = 4
+          and exists (select 1 from public.profiles where id = wO and username is not null)
+          and (select count(*) from public.get_my_profile()) = 1
+          and (select location_sharing from public.get_my_profile()) = 'connections'
+          and (select id from public.get_my_profile()) = wS;
+    reset role;
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W7 others'' settings unreadable (' || n || '/4); get_my_profile returns only my full row';
+    if not ok then fails := fails + 1; end if;
+
+    -- W8: get_mutuals returns only the four card columns.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', wS, 'role', 'authenticated')::text, true);
+    select count(*) into n from public.get_mutuals(wO) m where m.id = wM;
+    reset role;
+    ok := n = 1 and coalesce((
+      select array_agg(a.attname::text order by a.attnum)
+      from pg_proc p, unnest(p.proargnames) with ordinality a(attname, attnum)
+      where p.oid = 'public.get_mutuals(uuid)'::regprocedure
+        and p.proargmodes[a.attnum] = 't'
+    ) = array['id', 'username', 'full_name', 'avatar_url'], false);
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W8 get_mutuals finds the mutual and returns only id/username/full_name/avatar_url';
+    if not ok then fails := fails + 1; end if;
+
+    -- W9 (attack): leftover privileges are gone.
+    ok := not has_table_privilege('anon', 'public.app_admins', 'select')
+          and not has_table_privilege('authenticated', 'public.app_admins', 'insert')
+          and not has_table_privilege('authenticated', 'public.connections', 'truncate')
+          and not has_table_privilege('anon', 'public.profiles', 'select')
+          and has_table_privilege('authenticated', 'public.messages', 'insert')
+          and not has_function_privilege('anon', 'public.get_unread_counts()', 'execute')
+          and has_function_privilege('authenticated', 'public.get_unread_counts()', 'execute')
+          and not has_function_privilege('authenticated', 'public.handle_new_message()', 'execute')
+          and has_function_privilege('anon', 'public._check_request()', 'execute')
+          and not has_function_privilege('anon', 'public._mfa_ok()', 'execute');
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  W9 anon/authenticated lost unused table and function privileges';
     if not ok then fails := fails + 1; end if;
   end;
 

@@ -64,7 +64,9 @@ export default function DeleteAccountScreen() {
     setErrorMessage(
       result === 'confirm_mismatch'
         ? "That doesn't match your username."
-        : result === 'offline'
+        : result === 'mfa_required'
+          ? 'Enter your two-step verification code first: sign out, then sign in again with your code.'
+          : result === 'offline'
           ? "Couldn't reach Bolas. Check your connection and try again."
           : 'Something went wrong, and your account was not deleted. Please try again.',
     );

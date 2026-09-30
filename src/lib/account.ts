@@ -7,6 +7,7 @@ export type DeleteAccountResult =
   | 'deleted'
   | 'confirm_mismatch'
   | 'not_authenticated'
+  | 'mfa_required'
   | 'failed'
   | 'offline';
 
@@ -25,7 +26,11 @@ export async function deleteMyAccount(confirm: string): Promise<DeleteAccountRes
   if (error instanceof FunctionsHttpError) {
     try {
       const body = await error.context.json();
-      if (body?.outcome === 'confirm_mismatch' || body?.outcome === 'not_authenticated') {
+      if (
+        body?.outcome === 'confirm_mismatch' ||
+        body?.outcome === 'not_authenticated' ||
+        body?.outcome === 'mfa_required'
+      ) {
         return body.outcome;
       }
     } catch {

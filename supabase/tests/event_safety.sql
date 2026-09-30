@@ -204,9 +204,11 @@ begin
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
   n := 0;
-  select n + count(*) into n from public.app_admins;
-  select n + count(*) into n from public.event_creation_log;
-  select n + count(*) into n from public.blocked_terms;   -- was event_blocked_terms (merged in 20260928020000)
+  -- Empty, or refused outright (no grant since 20260930000000).
+  begin select n + count(*) into n from public.app_admins; exception when insufficient_privilege then null; end;
+  begin select n + count(*) into n from public.event_creation_log; exception when insufficient_privilege then null; end;
+  -- was event_blocked_terms (merged in 20260928020000)
+  begin select n + count(*) into n from public.blocked_terms; exception when insufficient_privilege then null; end;
   select n + count(*) into n from public.host_permissions;   -- u_trusted has no row
   begin perform public._hosting_status(u_new); n := n + 100; exception when others then null; end;
   begin perform public._event_rules(); n := n + 100; exception when others then null; end;
@@ -237,8 +239,12 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B1 direct insert into events is refused (' || coalesce(err, 'no error') || ')';
   if not ok then fails := fails + 1; end if;
 
-  -- B2: a direct update of your own event changes nothing.
-  update public.events set title = 'Hacked', approx_latitude = 0 where id = eid;
+  -- B2: a direct update of your own event changes nothing (or is refused
+  -- outright: no update grant since 20260930000000).
+  begin
+    update public.events set title = 'Hacked', approx_latitude = 0 where id = eid;
+  exception when insufficient_privilege then null;
+  end;
   reset role;
   select * into e from public.events where id = eid;
   ok := e.title = 'Pitch night' and e.approx_latitude <> 0;
@@ -467,8 +473,11 @@ begin
 
   -- C5: nobody can write event_locations directly (not even the host).
   perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
-  update public.event_locations set latitude = 0, location_name = 'My house' where event_id = eid;
-  get diagnostics n = row_count;
+  begin  -- refused outright since 20260930000000 (no grant) = blocked too
+    update public.event_locations set latitude = 0, location_name = 'My house' where event_id = eid;
+    get diagnostics n = row_count;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := n = 0;
   err := null;
   begin
@@ -651,7 +660,10 @@ begin
 
   -- D8: nobody can set going_count directly, not even the host.
   perform set_config('request.jwt.claims', json_build_object('sub', u_trusted, 'role', 'authenticated')::text, true);
-  update public.events set going_count = 999 where id = eid;
+  begin  -- refused outright since 20260930000000 (no grant) = blocked too
+    update public.events set going_count = 999 where id = eid;
+  exception when insufficient_privilege then null;
+  end;
   select s.going_count into n from public.event_summaries s where s.id = eid;
   ok := n = 4;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D8 direct update of going_count does nothing (still ' || n || ')';
@@ -748,7 +760,10 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', f2, 'role', 'authenticated')::text, true);
   v := public.report_event(eid, 'spam', null);
   ok := ok and v ->> 'outcome' = 'reported' and not (v ->> 'hidden')::boolean;
-  select count(*) into n from public.event_reports;
+  begin  -- refused outright since 20260930000000 (no grant) = blocked too
+    select count(*) into n from public.event_reports;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := ok and n = 0;
   reset role;
   select * into e from public.events where id = eid;

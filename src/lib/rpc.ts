@@ -27,6 +27,11 @@ export class RpcError extends Error {
 
 export function friendlyRpcError(error: unknown): string {
   if (error instanceof RpcError) {
+    // The database refuses password-only sessions of accounts with two-step
+    // on (20260930000000). The app normally shows the code screen first.
+    if (error.serverMessage === 'mfa_required') {
+      return 'Enter your two-step verification code to continue.';
+    }
     if (error.kind === 'offline') return "You're offline. Check your connection and try again.";
     if (error.kind === 'timeout') return 'That took too long. Check your connection and try again.';
   }

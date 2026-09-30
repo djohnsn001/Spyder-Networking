@@ -389,8 +389,12 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C11 7th code in a minute -> rate_limited';
   if not ok then fails := fails + 1; end if;
 
-  -- C12: clients can't read the table directly (RLS, no policies).
-  select count(*) into n from public.connect_tokens;
+  -- C12: clients can't read the table directly (no grant since
+  -- 20260930000000; RLS with no policies before that).
+  begin
+    select count(*) into n from public.connect_tokens;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := n = 0;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C12 direct select on connect_tokens sees nothing (got ' || n || ')';
   if not ok then fails := fails + 1; end if;
@@ -546,8 +550,12 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D10 11th bump in a minute -> rate_limited';
   if not ok then fails := fails + 1; end if;
 
-  -- D11: clients can't read bump_events directly (RLS, no policies).
-  select count(*) into n from public.bump_events;
+  -- D11: clients can't read bump_events directly (no grant since
+  -- 20260930000000; RLS with no policies before that).
+  begin
+    select count(*) into n from public.bump_events;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := n = 0;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  D11 direct select on bump_events sees nothing (got ' || n || ')';
   if not ok then fails := fails + 1; end if;

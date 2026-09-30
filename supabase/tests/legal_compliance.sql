@@ -148,11 +148,18 @@ begin
   end;
   ok := err = '42501';
   perform set_config('request.jwt.claims', json_build_object('sub', ua_ok, 'role', 'authenticated')::text, true);
-  update public.user_consents set accepted_at = now() - interval '1 year' where user_id = ua_ok;
-  get diagnostics n = row_count;
+  -- No rows changed, or refused outright (no grant since 20260930000000).
+  begin
+    update public.user_consents set accepted_at = now() - interval '1 year' where user_id = ua_ok;
+    get diagnostics n = row_count;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := ok and n = 0;
-  delete from public.user_consents where user_id = ua_ok;
-  get diagnostics n = row_count;
+  begin
+    delete from public.user_consents where user_id = ua_ok;
+    get diagnostics n = row_count;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := ok and n = 0;
   reset role;
   ok := ok and exists (select 1 from public.user_consents where user_id = ua_ok and accepted_at = now());
@@ -656,7 +663,10 @@ begin
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', rOut, 'role', 'authenticated')::text, true);
   v := public.report_user(rU, 'profile', null, 'underage', 'says they are 16');
-  select count(*) into n from public.user_reports;
+  begin
+    select count(*) into n from public.user_reports;
+  exception when insufficient_privilege then n := 0;   -- no grant since 20260930000000
+  end;
   reset role;
   ok := v ->> 'outcome' = 'reported' and n = 0;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  C5 underage report filed; user_reports unreadable by users';
@@ -804,7 +814,10 @@ begin
   v := public.create_event('Forex night', null, null, 43.6, -116.2, now() + interval '1 day', null, 'connections');
   ok := v ->> 'outcome' = 'blocked_content';
   -- E5: the list itself isn't readable by users.
-  select count(*) into n from public.blocked_terms;
+  begin  -- refused outright since 20260930000000 (no grant) = blocked too
+    select count(*) into n from public.blocked_terms;
+  exception when insufficient_privilege then n := 0;
+  end;
   ok := ok and n = 0;
   reset role;
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  E4/E5 events filtered by the shared list; list unreadable by users';

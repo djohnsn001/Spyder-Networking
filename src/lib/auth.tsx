@@ -28,12 +28,14 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-async function fetchProfile(userId: string) {
+// My own full row. Other people's settings columns (location sharing,
+// notifications) aren't readable through the table, so this goes through
+// get_my_profile() (20260930000000).
+async function fetchProfile() {
   const { data, error } = await supabase
-    .from('profiles')
+    .rpc('get_my_profile')
     .select(OWN_PROFILE_COLUMNS)
-    .eq('id', userId)
-    .maybeSingle();
+    .maybeSingle<Profile>();
   if (error) {
     console.error('Failed to load profile', error);
     return null;
@@ -81,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session);
       if (data.session) {
         const [nextProfile, nextNeedsConsent, nextIsSuspended] = await Promise.all([
-          fetchProfile(data.session.user.id),
+          fetchProfile(),
           fetchNeedsConsent(),
           fetchIsSuspended(data.session.user.id),
         ]);
@@ -100,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (newSession) {
         setIsLoading(true);
         const [nextProfile, nextNeedsConsent, nextIsSuspended] = await Promise.all([
-          fetchProfile(newSession.user.id),
+          fetchProfile(),
           fetchNeedsConsent(),
           fetchIsSuspended(newSession.user.id),
         ]);
@@ -125,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function refreshProfile() {
     if (!session) return;
-    setProfile(await fetchProfile(session.user.id));
+    setProfile(await fetchProfile());
   }
 
   async function refreshConsent() {
