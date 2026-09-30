@@ -18,6 +18,12 @@ export type Profile = {
   tags_updated_at: string | null;
   // Server-managed (later: in-app purchase). Only ever your own.
   is_premium: boolean;
+  // Server-managed (20260930030000): when the profile first counted as
+  // complete, the member number it got then (Founder #1-200, Early Member
+  // #201-1000), and lifetime premium (Supporter).
+  profile_completed_at: string | null;
+  member_number: number | null;
+  lifetime_premium: boolean;
   created_at: string;
   updated_at: string;
 };

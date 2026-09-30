@@ -5,13 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { LookingForTags } from '@/components/looking-for-tags';
+import { BadgesSection, FeaturedBadges, useProfileBadges } from '@/components/profile-badges';
+import { ProfileStatsRow } from '@/components/profile-stats';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { type EarnedBadge, fetchProfileStats, type ProfileStats } from '@/lib/badges';
 import {
   acceptConnectionRequest,
-  fetchConnectionCount,
   fetchPendingRequests,
   removeConnection,
   type PendingRequest,
@@ -25,20 +27,33 @@ export default function ProfileScreen() {
 
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
-  const [connectionCount, setConnectionCount] = useState(0);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [isConfirmingTags, setIsConfirmingTags] = useState(false);
   const [tagsError, setTagsError] = useState<string | null>(null);
+  const myId = session?.user.id;
+  const { definitions, badges, reload: reloadBadges } = useProfileBadges(myId);
+
+  const loadStats = useCallback(async () => {
+    if (!myId) return;
+    try {
+      setStats(await fetchProfileStats(myId));
+    } catch (error) {
+      if (__DEV__) console.warn('Failed to load stats', error);
+    }
+  }, [myId]);
 
   const loadRequests = useCallback(async () => {
-    if (!session) return;
-    setRequests(await fetchPendingRequests(session.user.id));
-    setConnectionCount(await fetchConnectionCount(session.user.id));
-  }, [session]);
+    if (!myId) return;
+    setRequests(await fetchPendingRequests(myId));
+  }, [myId]);
 
   useFocusEffect(
     useCallback(() => {
       void loadRequests();
-    }, [loadRequests]),
+      void loadStats();
+      void reloadBadges();
+    }, [loadRequests, loadStats, reloadBadges]),
   );
 
   async function handleAccept(connectionId: string) {
@@ -46,7 +61,7 @@ export default function ProfileScreen() {
     try {
       await acceptConnectionRequest(connectionId);
       setRequests((current) => current.filter((request) => request.connectionId !== connectionId));
-      if (session) setConnectionCount(await fetchConnectionCount(session.user.id));
+      void loadStats();
     } catch (error) {
       console.error('Failed to accept request', error);
     } finally {
@@ -111,14 +126,9 @@ export default function ProfileScreen() {
               </ThemedText>
             ) : null}
 
-            <Pressable
-              onPress={() => router.push('/connections')}
-              accessibilityRole="button"
-              accessibilityLabel="View connections">
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-                {connectionCount} connection{connectionCount === 1 ? '' : 's'}
-              </ThemedText>
-            </Pressable>
+            <FeaturedBadges definitions={definitions} badges={badges} onPressBadge={setSelectedBadge} />
+
+            <ProfileStatsRow stats={stats} onPressInPerson={() => router.push('/connections')} />
 
             {profile?.bio ? (
               <ThemedText type="default" style={styles.centerText}>
@@ -154,6 +164,15 @@ export default function ProfileScreen() {
                 </ThemedText>
               </Pressable>
             )}
+
+            <BadgesSection
+              definitions={definitions}
+              badges={badges}
+              isOwn
+              selected={selectedBadge}
+              onSelect={setSelectedBadge}
+              onChanged={() => void reloadBadges()}
+            />
           </ThemedView>
 
           {tagsAreStale ? (

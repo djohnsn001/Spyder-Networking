@@ -1,19 +1,21 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { LevelChip } from '@/components/connect/level-chip';
 import { ConnectButton } from '@/components/connect-button';
 import { LookingForTags } from '@/components/looking-for-tags';
+import { BadgesSection, FeaturedBadges, useProfileBadges } from '@/components/profile-badges';
+import { ProfileStatsRow } from '@/components/profile-stats';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { type EarnedBadge, fetchProfileStats, type ProfileStats } from '@/lib/badges';
 import {
   acceptConnectionRequest,
-  fetchConnectionCount,
   fetchMutualCount,
   fetchMyConnections,
   getConnectionStatus,
@@ -38,7 +40,9 @@ export default function UserProfileScreen() {
   const [lookingFor, setLookingFor] = useState<LookingForInfo | null>(null);
   const [connections, setConnections] = useState<ConnectionRow[]>([]);
   const [mutualCount, setMutualCount] = useState(0);
-  const [connectionCount, setConnectionCount] = useState(0);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
+  const { definitions, badges, reload: reloadBadges } = useProfileBadges(id);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
@@ -47,11 +51,15 @@ export default function UserProfileScreen() {
   const load = useCallback(async () => {
     if (!id || !myId) return;
     setIsLoading(true);
-    const [profileResult, myConnections, mutuals, connectionTotal, tags] = await Promise.all([
+    const [profileResult, myConnections, mutuals, profileStats, tags] = await Promise.all([
       supabase.from('profiles').select(PUBLIC_PROFILE_COLUMNS).eq('id', id).maybeSingle(),
       fetchMyConnections(myId),
       fetchMutualCount(id),
-      fetchConnectionCount(id),
+      // Stats are extra too.
+      fetchProfileStats(id).catch((error) => {
+        if (__DEV__) console.warn('Failed to load stats', error);
+        return null;
+      }),
       // Tags are extra: if they fail to load, the profile still shows.
       fetchLookingFor(id).catch((error) => {
         console.error('Failed to load Looking For tags', error);
@@ -66,14 +74,20 @@ export default function UserProfileScreen() {
     setLookingFor(tags);
     setConnections(myConnections);
     setMutualCount(mutuals);
-    setConnectionCount(connectionTotal);
+    setStats(profileStats);
     setIsLoading(false);
   }, [id, myId]);
+
+  const reloadStats = useCallback(async () => {
+    if (!id) return;
+    setStats(await fetchProfileStats(id).catch(() => null));
+  }, [id]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      void reloadBadges();
+    }, [load, reloadBadges]),
   );
 
   async function handleConnectPress() {
@@ -85,7 +99,7 @@ export default function UserProfileScreen() {
         await sendConnectionRequest(myId, id);
       } else if ((status === 'pending_sent' || status === 'accepted') && connectionId) {
         await removeConnection(connectionId);
-        setConnectionCount(await fetchConnectionCount(id));
+        void reloadStats();
       }
       setConnections(await fetchMyConnections(myId));
     } catch (error) {
@@ -106,7 +120,7 @@ export default function UserProfileScreen() {
         await removeConnection(connectionId);
       }
       setConnections(await fetchMyConnections(myId));
-      setConnectionCount(await fetchConnectionCount(id));
+      void reloadStats();
     } catch (error) {
       console.error('Failed to respond to request', error);
     } finally {
@@ -175,6 +189,11 @@ export default function UserProfileScreen() {
         />
       ) : null}
       <SafeAreaView style={styles.safeArea}>
+        {/* Scrolls once stats, tags and badges make it taller than the screen. */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}>
         <ThemedView type="backgroundElement" style={styles.card}>
           <Avatar uri={profile.avatar_url} name={displayName} size={96} />
 
@@ -194,10 +213,15 @@ export default function UserProfileScreen() {
             </View>
           ) : null}
 
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-            {connectionCount} connection{connectionCount === 1 ? '' : 's'}
-            {mutualCount > 0 ? ` · ${mutualCount} mutual` : ''}
-          </ThemedText>
+          <FeaturedBadges definitions={definitions} badges={badges} onPressBadge={setSelectedBadge} />
+
+          <ProfileStatsRow stats={stats} />
+
+          {mutualCount > 0 ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+              {mutualCount} mutual connection{mutualCount === 1 ? '' : 's'}
+            </ThemedText>
+          ) : null}
 
           {profile.bio ? (
             <ThemedText type="default" style={styles.centerText}>
@@ -222,6 +246,15 @@ export default function UserProfileScreen() {
           ) : null}
 
           <LookingForTags tags={lookingFor?.looking_for} updatedAt={lookingFor?.tags_updated_at} />
+
+          <BadgesSection
+            definitions={definitions}
+            badges={badges}
+            isOwn={myId === id}
+            selected={selectedBadge}
+            onSelect={setSelectedBadge}
+            onChanged={() => void reloadBadges()}
+          />
 
           {myId ? (
             <ConnectButton
@@ -279,6 +312,7 @@ export default function UserProfileScreen() {
             </Pressable>
           ) : null}
         </ThemedView>
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -297,6 +331,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
+  },
+  scroll: {
+    alignSelf: 'stretch',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
   },
   card: {
     alignSelf: 'stretch',

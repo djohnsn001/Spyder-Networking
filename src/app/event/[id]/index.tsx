@@ -11,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, DangerColor, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { type CheckinInfo, fetchCheckinInfo } from '@/lib/checkin';
 import {
   deleteEvent,
   fetchEvent,
@@ -32,6 +33,20 @@ async function loadAttendees(eventId: string): Promise<EventAttendee[]> {
   }
 }
 
+// Same for check-in: without it the sheet just doesn't offer check-in.
+async function loadCheckinInfo(eventId: string): Promise<CheckinInfo | null> {
+  try {
+    return await fetchCheckinInfo(eventId);
+  } catch (error) {
+    if (__DEV__) console.warn('Failed to load check-in info', error);
+    return null;
+  }
+}
+
+function formatClock(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 // Bottom sheet opened by tapping an event pin on the Map tab. It's a
 // fitToContents formSheet: the sheet takes its height from this content, so
 // nothing here may use flex: 1 (there's no parent height to fill — on iOS
@@ -44,6 +59,7 @@ export default function EventDetailScreen() {
 
   const [event, setEvent] = useState<EventSummary | null>(null);
   const [attendees, setAttendees] = useState<EventAttendee[]>([]);
+  const [checkin, setCheckin] = useState<CheckinInfo | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [isUpdatingRsvp, setIsUpdatingRsvp] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -56,10 +72,15 @@ export default function EventDetailScreen() {
       let cancelled = false;
       (async () => {
         try {
-          const [data, people] = await Promise.all([fetchEvent(id), loadAttendees(id)]);
+          const [data, people, checkinInfo] = await Promise.all([
+            fetchEvent(id),
+            loadAttendees(id),
+            loadCheckinInfo(id),
+          ]);
           if (cancelled) return;
           setEvent(data);
           setAttendees(people);
+          setCheckin(checkinInfo);
           setLoadState(data ? 'loaded' : 'missing');
         } catch (error) {
           if (__DEV__) console.warn('Failed to load event', error);
@@ -261,6 +282,42 @@ export default function EventDetailScreen() {
         </ThemedText>
       ) : null}
 
+      {/* Check-in: opens 15 min before the start, closes at the end. */}
+      {checkin && isActive && !hasEnded ? (
+        checkin.is_host ? (
+          <View style={styles.checkinBlock}>
+            <Pressable
+              onPress={() => router.push(`/event/${event.id}/checkin`)}
+              accessibilityRole="button"
+              accessibilityLabel="Show check-in code"
+              style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.pressed]}>
+              <ThemedText type="smallBold">Show check-in code</ThemedText>
+            </Pressable>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+              {checkin.is_open
+                ? `${checkin.checkin_count ?? 0} checked in`
+                : `Check-in opens at ${formatClock(checkin.opens_at)}`}
+            </ThemedText>
+          </View>
+        ) : checkin.checked_in ? (
+          <ThemedText type="smallBold" style={[styles.centerText, styles.checkedIn]}>
+            ✓ You&apos;re checked in
+          </ThemedText>
+        ) : checkin.is_open ? (
+          <Pressable
+            onPress={() => router.push('/connect?tab=scan')}
+            accessibilityRole="button"
+            accessibilityLabel="Check in by scanning the host's code"
+            style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.pressed]}>
+            <ThemedText type="smallBold">📍 Check in · Scan the host&apos;s code</ThemedText>
+          </Pressable>
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            Check-in opens at {formatClock(checkin.opens_at)}
+          </ThemedText>
+        )
+      ) : null}
+
       {hasEnded ? (
         <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
           This event has ended.
@@ -433,6 +490,12 @@ const styles = StyleSheet.create({
   },
   errorText: {
     textAlign: 'center',
+  },
+  checkinBlock: {
+    gap: Spacing.one,
+  },
+  checkedIn: {
+    color: AccentColor,
   },
 });
 

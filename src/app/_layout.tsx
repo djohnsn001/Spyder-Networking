@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { BadgeToastProvider } from '@/lib/badge-toasts';
 import { takePendingConnectToken } from '@/lib/connect/pending-link';
 import { ThemePreferenceProvider, useThemePreference } from '@/lib/theme-preference';
 import { UnreadMessagesProvider } from '@/lib/unread-messages';
@@ -75,6 +76,8 @@ function RootNavigator() {
           />
           <Stack.Screen name="event/[id]/edit" options={{ presentation: 'modal' }} />
           <Stack.Screen name="event/[id]/report" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="event/[id]/checkin" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="checkin/[token]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="connect/index" options={{ presentation: 'modal' }} />
           <Stack.Screen name="connect/[token]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
@@ -129,7 +132,9 @@ function RootLayoutThemed() {
       <AnimatedSplashOverlay />
       <AuthProvider>
         <UnreadMessagesProvider>
-          <RootNavigator />
+          <BadgeToastProvider>
+            <RootNavigator />
+          </BadgeToastProvider>
         </UnreadMessagesProvider>
       </AuthProvider>
     </ThemeProvider>

@@ -16,6 +16,12 @@ import { ThemedView } from '@/components/themed-view';
 import { AccentColor, DangerColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  adminGetLifetimePremium,
+  adminSetLifetimePremium,
+  formatBadgeNumber,
+  type LifetimePremiumStatus,
+} from '@/lib/badges';
+import {
   adminFindUser,
   adminListFlaggedEvents,
   adminSetEventStatus,
@@ -442,17 +448,40 @@ function HostsTab() {
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [lifetime, setLifetime] = useState<Record<string, LifetimePremiumStatus | null>>({});
 
   async function search(text = query) {
     if (!text.trim()) return;
     setIsSearching(true);
     try {
-      setResults(await adminFindUser(text));
+      const found = await adminFindUser(text);
+      setResults(found);
       setError(null);
+      const statuses = await Promise.all(
+        found.map(async (user) => [user.userId, await adminGetLifetimePremium(user.userId).catch(() => null)] as const),
+      );
+      setLifetime(Object.fromEntries(statuses));
     } catch (err) {
       setError(friendlyRpcError(err));
     } finally {
       setIsSearching(false);
+    }
+  }
+
+  async function setLifetimePremium(user: AdminUser, on: boolean) {
+    setBusyId(user.userId);
+    try {
+      const result = await adminSetLifetimePremium(user.userId, on);
+      if (result.outcome === 'sold_out') {
+        Alert.alert('Sold out', 'Every Supporter spot is taken.');
+      } else if (result.outcome === 'granted' && result.number != null) {
+        Alert.alert('Lifetime premium granted', `Supporter ${formatBadgeNumber(result.number)}`);
+      }
+      await search();
+    } catch (err) {
+      Alert.alert("Couldn't update", friendlyRpcError(err));
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -532,6 +561,35 @@ function HostsTab() {
                 label="Clear"
                 disabled={busy || user.hostStatus === null}
                 onPress={() => setHost(user, null)}
+              />
+            </View>
+
+            {/* Test toggle until in-app purchase exists. */}
+            <ThemedText type="small" themeColor="textSecondary">
+              Lifetime premium:{' '}
+              {lifetime[user.userId]?.lifetime_premium ? 'on' : 'off'}
+              {lifetime[user.userId]?.supporter_number != null
+                ? ` · Supporter ${formatBadgeNumber(lifetime[user.userId]!.supporter_number!)}`
+                : ''}
+            </ThemedText>
+            <View style={styles.buttonRow}>
+              <AdminButton
+                label="Grant lifetime"
+                disabled={busy || lifetime[user.userId]?.lifetime_premium === true}
+                onPress={() =>
+                  confirm(
+                    `Give @${user.username} lifetime premium?`,
+                    'This uses a Supporter spot (they keep the badge forever, even if you turn it off later).',
+                    'Grant',
+                    () => setLifetimePremium(user, true),
+                  )
+                }
+              />
+              <AdminButton
+                label="Remove lifetime"
+                danger
+                disabled={busy || lifetime[user.userId]?.lifetime_premium !== true}
+                onPress={() => setLifetimePremium(user, false)}
               />
             </View>
           </ThemedView>
