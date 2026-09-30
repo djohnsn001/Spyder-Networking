@@ -223,9 +223,10 @@ begin
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B9 undo after window -> too_late';
   if not ok then fails := fails + 1; end if;
 
-  -- B10: an in_person row can't be pushed back to pending by a client
-  -- (guard allows status edits, but the check constraint blocks this one).
-  -- u1 is the addressee here (only the addressee may update, per RLS).
+  -- B10: an in_person row can't be pushed back to pending by a client.
+  -- Since 20260929000000 the guard refuses any client status change other
+  -- than pending -> accepted (42501), before the check constraint (23514)
+  -- would. u1 is the addressee here (only the addressee may update, per RLS).
   perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
   err := null;
   begin
@@ -233,7 +234,7 @@ begin
   exception when others then err := sqlstate;
   end;
   reset role;
-  ok := err = '23514';
+  ok := err = '42501';
   report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end || '  B10 client cannot set an in_person row to pending (got ' || coalesce(err, 'no error') || ')';
   if not ok then fails := fails + 1; end if;
 
