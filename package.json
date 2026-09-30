@@ -63,7 +63,7 @@
     "lint": "expo lint",
     "db:login": "supabase login",
     "db:link": "npm run db:link:dev",
-    "db:link:dev": "supabase link --project-ref REPLACE_WITH_DEV_PROJECT_REF",
+    "db:link:dev": "supabase link --project-ref ojrtebubjvkhpiryilum",
     "db:link:prod": "supabase link --project-ref fhevoocpcnrjxyjvitai",
     "db:diff": "supabase db diff --linked",
     "db:push": "supabase db push",

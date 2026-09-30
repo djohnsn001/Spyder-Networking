@@ -35,7 +35,7 @@ There are two Supabase projects. **Use dev for everything except a real release.
 
 | | Dev | Production |
 |---|---|---|
-| Project ref | `REPLACE_WITH_DEV_PROJECT_REF` | `fhevoocpcnrjxyjvitai` |
+| Project ref | `ojrtebubjvkhpiryilum` | `fhevoocpcnrjxyjvitai` |
 | Link the CLI | `npm run db:link` (same as `db:link:dev`) | `npm run db:link:prod` |
 | Use it for | trying migrations, running `supabase/tests/*.sql`, seed data | real users; migrations only once they've passed on dev |
 
