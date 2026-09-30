@@ -63,6 +63,12 @@ begin
     (f3, interval '30 days')
   ) as t (id, age);
 
+  -- The server requires the current Terms to connect, message, RSVP and host
+  -- (M5), so the test users have accepted them.
+  insert into public.user_consents (user_id, terms_version, accepted_at, age_confirmed_at)
+  select id, public._current_terms_version(), now(), now()
+  from unnest(array[u_new, u_trusted, u_acq, u_appr, u_susp, u_admin, u_noname, u_rate, f1, f2, f3]) as id;
+
   -- handle_new_user made the profile rows; give everyone but u_noname a username.
   update public.profiles
   set username = 'es_' || left(replace(id::text, '-', ''), 12)
