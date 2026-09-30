@@ -7,7 +7,10 @@
  *
  *   # .env.seed.local — used only by scripts/*.js, never by the app
  *   SUPABASE_URL=https://<dev-project-ref>.supabase.co
- *   SUPABASE_SERVICE_ROLE_KEY=<that project's service_role / secret key>
+ *   SUPABASE_SECRET_KEY=sb_secret_...   (that project's secret key)
+ *
+ * Only new-style secret keys (sb_secret_...) are accepted, not the legacy
+ * service_role JWT, so the legacy keys can be switched off (item H3).
  *
  * Every script calls loadSeedEnv() before doing anything, which refuses to
  * run against the production project unless the command includes
@@ -44,18 +47,6 @@ function parseEnvFile(filePath) {
   return vars;
 }
 
-// Legacy service_role keys are JWTs whose payload names the project ("ref").
-// New sb_secret_ keys don't, so this only catches the legacy kind.
-function jwtProjectRef(key) {
-  const parts = String(key).split(".");
-  if (parts.length !== 3) return null;
-  try {
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")).ref ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function fail(message) {
   console.error(`\n✖ ${message}\n`);
   process.exit(1);
@@ -63,31 +54,47 @@ function fail(message) {
 
 /**
  * Returns { url, serviceKey } for the target project, or exits with code 1:
- * missing file / values, or the target is production without the flag.
- * Shell variables with the same names override the file (handy for CI).
+ * missing file / values, a key that isn't sb_secret_..., or the target is
+ * production without the flag. Shell variables with the same names override
+ * the file (handy for CI).
  */
 function loadSeedEnv() {
   const fileVars = parseEnvFile(path.join(ROOT, SEED_ENV_FILE));
   const url = process.env.SUPABASE_URL || fileVars.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || fileVars.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || fileVars.SUPABASE_SECRET_KEY;
+  const legacyKeySet = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || fileVars.SUPABASE_SERVICE_ROLE_KEY);
 
   if (!url || !serviceKey) {
     fail(
-      `Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.\n` +
+      `Missing SUPABASE_URL or SUPABASE_SECRET_KEY.\n` +
+        (legacyKeySet
+          ? `  SUPABASE_SERVICE_ROLE_KEY (the legacy JWT) isn't used any more: replace it with\n` +
+            `  SUPABASE_SECRET_KEY=sb_secret_... (Supabase dashboard -> Project Settings -> API Keys).\n`
+          : "") +
         `  Put both in ${SEED_ENV_FILE} at the project root (it's git-ignored):\n` +
         `    SUPABASE_URL=https://<dev-project-ref>.supabase.co\n` +
-        `    SUPABASE_SERVICE_ROLE_KEY=<the DEV project's service key>\n` +
-        `  Get the key from the Supabase dashboard: Project Settings -> API keys.\n` +
+        `    SUPABASE_SECRET_KEY=sb_secret_...   (the DEV project's secret key)\n` +
         `  Never prefix it EXPO_PUBLIC_, never put it in .env, never commit it.`
     );
   }
 
-  const isProduction = url.includes(PRODUCTION_REF) || jwtProjectRef(serviceKey) === PRODUCTION_REF;
+  // Secret keys only; the legacy service_role JWTs are being switched off.
+  if (!serviceKey.startsWith("sb_secret_")) {
+    fail(
+      `SUPABASE_SECRET_KEY must be a secret key (starts with sb_secret_).\n` +
+        `  Legacy service_role JWTs aren't accepted. Create a secret key in the Supabase\n` +
+        `  dashboard -> Project Settings -> API Keys.`
+    );
+  }
+
+  // Secret keys don't say which project they belong to, so the URL decides.
+  // (A dev URL with a production key just fails to authenticate.)
+  const isProduction = url.includes(PRODUCTION_REF);
   if (isProduction && !process.argv.includes(PRODUCTION_FLAG)) {
     fail(
       `Refusing to run: ${SEED_ENV_FILE} points at the PRODUCTION project (${PRODUCTION_REF}).\n` +
         `  Seed and maintenance scripts are for the dev project. Point SUPABASE_URL and\n` +
-        `  SUPABASE_SERVICE_ROLE_KEY at the dev project instead.\n` +
+        `  SUPABASE_SECRET_KEY at the dev project instead.\n` +
         `  If you really mean production, re-run with ${PRODUCTION_FLAG}.`
     );
   }

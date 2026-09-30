@@ -6,9 +6,9 @@
  * positions change (e.g. re-arranging the layout) without wanting to
  * delete and recreate the accounts and their connections.
  *
- * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for the DEV
- * project), never .env; see scripts/seed-env.js. The service key bypasses
- * Row Level Security, so it's never used by the app, never prefixed
+ * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SECRET_KEY for the DEV
+ * project), never .env; see scripts/seed-env.js. The secret key (sb_secret_...)
+ * bypasses Row Level Security, so it's never used by the app, never prefixed
  * EXPO_PUBLIC_, and never committed. Refuses to run against production
  * (fhevoocpcnrjxyjvitai) unless --i-know-this-is-production is passed.
  *

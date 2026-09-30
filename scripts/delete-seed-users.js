@@ -9,7 +9,7 @@
  * user. The database cascades everything else: profile, connections,
  * locations, events, chats.
  *
- * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for the DEV
+ * Needs .env.seed.local (SUPABASE_URL + SUPABASE_SECRET_KEY for the DEV
  * project), never .env; see scripts/seed-env.js. Refuses to run against
  * production (fhevoocpcnrjxyjvitai) unless --i-know-this-is-production is
  * passed.

@@ -2,6 +2,8 @@
 
 /**
  * Fails (exit 1) if a secret looks like it's about to ship in the app.
+ * The app should only ever have the publishable key
+ * (EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...).
  *
  * Anything named EXPO_PUBLIC_* is compiled into the app bundle, where anyone
  * can read it. This checks every EXPO_PUBLIC_ variable in .env, every .env.*
@@ -34,15 +36,17 @@ function jwtRole(value) {
   }
 }
 
-// Why this variable is unsafe, or null if it's fine.
+// Why this variable is unsafe, or null if it's fine. The two exact key
+// checks come first so the message says precisely what leaked.
 function problem(name, value) {
+  if (String(value ?? "").startsWith("sb_secret_")) return "value is a Supabase secret key (sb_secret_...)";
+  if (jwtRole(value) === "service_role") return "value is a service_role key";
   const lowerName = name.toLowerCase();
   const lowerValue = String(value ?? "").toLowerCase();
   for (const word of FORBIDDEN) {
     if (lowerName.includes(word)) return `name contains "${word}"`;
     if (lowerValue.includes(word)) return `value contains "${word}"`;
   }
-  if (jwtRole(value) === "service_role") return "value is a service_role key";
   return null;
 }
 
