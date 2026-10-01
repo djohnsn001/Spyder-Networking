@@ -1,6 +1,6 @@
 > DRAFT: not legal advice. Must be reviewed before publishing.
 
-<!-- Placeholders: {{SITE}}, {{CONTACT_EMAIL}}, {{EFFECTIVE_DATE}}. These guidelines are part of the
+<!-- Placeholders still open: {{EFFECTIVE_DATE}}. These guidelines are part of the
 Terms (section 2), so a change here counts as a Terms change. -->
 
 # Bolas Community Guidelines
@@ -8,7 +8,7 @@ Terms (section 2), so a change here counts as a Terms change. -->
 **Effective date:** {{EFFECTIVE_DATE}}
 
 Bolas is where people find others to build with. Keep it the kind of place you'd want to show up
-to. These guidelines are part of our [Terms]({{SITE}}/terms), and we don't tolerate
+to. These guidelines are part of our [Terms](https://bolasnetworking.com/terms), and we don't tolerate
 objectionable content or abusive behavior.
 
 ## Be real
@@ -44,7 +44,7 @@ objectionable content or abusive behavior.
 ## Meet safely
 
 - Meet in public places, especially the first time.
-- Read our [Safety Tips]({{SITE}}/safety) before meeting someone new.
+- Read our [Safety Tips](https://bolasnetworking.com/safety) before meeting someone new.
 
 ## Hosting events
 
@@ -64,4 +64,4 @@ Depending on what happened, we may remove content, limit features, or suspend or
 sometimes without warning. We report illegal activity, including anything involving the
 exploitation of minors, to the authorities.
 
-Questions: {{CONTACT_EMAIL}}
+Questions: admin@bolasnetworking.com

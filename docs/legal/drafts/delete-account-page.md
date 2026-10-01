@@ -3,19 +3,18 @@
 <!--
 Notes for reviewers (delete before publishing):
 - This is the public page Google Play requires: a way to ask for deletion WITHOUT reinstalling the
-  app. Its URL ({{SITE}}/delete-account) goes into Play Console → Data safety → "Delete account URL".
+  app. Its URL (https://bolasnetworking.com/delete-account) goes into Play Console → Data safety → "Delete account URL".
 - Google asks that the page name the app and the developer as shown on the Play listing, give the
   steps, and say what's deleted, what's kept, and for how long.
 - Promise to keep: email requests are handled within 30 days. Handle them by deleting the account
   in the Supabase dashboard (Authentication → Users → delete) after checking that the email came
   from the account's address. The same cascades as in-app deletion then run, but avatar files have
   to be deleted by hand in Storage → avatars → <user id>. Consider adding an admin tool later.
-- Placeholders: {{SITE}}, {{SUPPORT_EMAIL}}, {{LEGAL_ENTITY_NAME}}.
 -->
 
 # Delete your Bolas account
 
-**App:** Bolas · **Developer:** {{LEGAL_ENTITY_NAME}}
+**App:** Bolas · **Developer:** Bolas Networking LLC
 
 ## In the app (fastest)
 
@@ -28,7 +27,7 @@ Your account is deleted right away.
 
 ## Without the app
 
-Email **{{SUPPORT_EMAIL}}** **from the email address you use for Bolas**, with the subject
+Email **admin@bolasnetworking.com** **from the email address you use for Bolas**, with the subject
 **"Delete my account."** We'll confirm the request came from you, then delete your account
 **within 30 days** and email you when it's done.
 
@@ -54,4 +53,4 @@ Email **{{SUPPORT_EMAIL}}** **from the email address you use for Bolas**, with t
 Deleting your account can't be undone. If you want to use Bolas again later, you'll need to create
 a new account.
 
-Questions: {{SUPPORT_EMAIL}}
+Questions: admin@bolasnetworking.com

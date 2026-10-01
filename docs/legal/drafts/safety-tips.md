@@ -1,7 +1,5 @@
 > DRAFT: not legal advice. Must be reviewed before publishing.
 
-<!-- Placeholders: {{SITE}}, {{CONTACT_EMAIL}}. -->
-
 # Bolas Safety Tips
 
 Most people on Bolas are here to build something, just like you. But Bolas doesn't run background
@@ -49,6 +47,6 @@ checks or verify identities, so look out for yourself when you meet someone new.
 - **Block them.** They won't be able to find you, message you, or connect with you, and they won't
   be told.
 - If you think someone on Bolas is **under 18**, report them.
-- For anything else, email us at {{CONTACT_EMAIL}}.
+- For anything else, email us at admin@bolasnetworking.com.
 
-More about our rules: [Community Guidelines]({{SITE}}/guidelines)
+More about our rules: [Community Guidelines](https://bolasnetworking.com/guidelines)

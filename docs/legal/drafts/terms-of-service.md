@@ -2,11 +2,12 @@
 
 <!--
 Notes for reviewers (delete before publishing):
-- Placeholders: {{LEGAL_ENTITY_NAME}}, {{CONTACT_EMAIL}}, {{SUPPORT_EMAIL}}, {{MAILING_ADDRESS}},
-  {{SITE}}, {{EFFECTIVE_DATE}} (= TERMS_VERSION, now 2026-10-01), {{DMCA_AGENT}},
-  {{GOVERNING_LAW}}, {{DISPUTE_RESOLUTION}}.
-- Governing law and dispute resolution are deliberately left for the lawyer (the plan says not to
-  pick arbitration or a state).
+- Placeholders still open: {{MAILING_ADDRESS}} (3 places, including the DMCA agent),
+  {{EFFECTIVE_DATE}} (= TERMS_VERSION, now 2026-10-01).
+- Section 15: Zane picked Idaho law and Idaho courts (Ada County), no arbitration (2026-09-30).
+  The lawyer should confirm it, or switch to arbitration with an opt-out and small-claims carve-out.
+- DMCA: the designated agent must also be registered with the U.S. Copyright Office
+  (dmca.copyright.gov) before the safe harbor applies.
 - Apple: Zane chose Apple's STANDARD EULA (2026-09-28), so there's no need to copy Apple's minimum
   EULA terms in. Section 16 is the usual short app-store section.
 - Google Maps Platform terms require apps using Google Maps to point users to Google's terms and
@@ -21,10 +22,10 @@ Notes for reviewers (delete before publishing):
 
 **Effective date:** {{EFFECTIVE_DATE}}
 
-These Terms are an agreement between you and {{LEGAL_ENTITY_NAME}} ("Bolas," "we," "us") about
+These Terms are an agreement between you and Bolas Networking LLC ("Bolas," "we," "us") about
 your use of the Bolas app and website (the "Service"). By checking the box to agree when you sign
 up (or when we ask you to review updated Terms), you agree to these Terms and to our
-[Privacy Policy]({{SITE}}/privacy). If you don't agree, don't use Bolas.
+[Privacy Policy](https://bolasnetworking.com/privacy). If you don't agree, don't use Bolas.
 
 ## 1. Who can use Bolas
 
@@ -38,7 +39,7 @@ up (or when we ask you to review updated Terms), you agree to these Terms and to
 ## 2. Our community rules
 
 Bolas is for finding people to build with. We have **zero tolerance for objectionable content or
-abusive users.** You agree to follow our [Community Guidelines]({{SITE}}/guidelines). Among other
+abusive users.** You agree to follow our [Community Guidelines](https://bolasnetworking.com/guidelines). Among other
 things, you won't:
 
 - harass, bully, threaten, stalk, or intimidate anyone, online or in person;
@@ -90,7 +91,7 @@ carefully.**
   criminal-record checks, and we don't verify what people say about themselves.
 - **You're responsible for your own safety.** Meet in public places, tell a friend where you're
   going, arrange your own transportation, and leave if something feels wrong. See our
-  [Safety Tips]({{SITE}}/safety).
+  [Safety Tips](https://bolasnetworking.com/safety).
 - **You assume the risks of meeting people you connect with through Bolas.** To the fullest extent
   the law allows, Bolas isn't responsible for the conduct of any user, online or offline.
 - If you're in danger, **call 911**. Then report the person in the app.
@@ -116,7 +117,7 @@ locate anyone who doesn't want to be found.
 
 - We give you a personal, limited, non-transferable, revocable license to use the Bolas app for
   its intended purpose, subject to these Terms.
-- Bolas, including its name, logo, design, and software, belongs to {{LEGAL_ENTITY_NAME}}. These
+- Bolas, including its name, logo, design, and software, belongs to Bolas Networking LLC. These
   Terms don't give you any rights to our brand.
 - Bolas is under active development. We may add, change, or remove features, or stop offering the
   Service, at any time.
@@ -125,7 +126,7 @@ locate anyone who doesn't want to be found.
 ## 9. Copyright complaints
 
 If you believe content on Bolas infringes your copyright, send a notice to our designated agent:
-{{DMCA_AGENT}}. Include: your contact information; the work you believe is infringed; where the
+Copyright Agent, Bolas Networking LLC, {{MAILING_ADDRESS}}, admin@bolasnetworking.com. Include: your contact information; the work you believe is infringed; where the
 content is on Bolas; a statement that you have a good-faith belief the use isn't authorized; a
 statement, under penalty of perjury, that your notice is accurate and that you're the owner or
 authorized to act for the owner; and your physical or electronic signature. We remove infringing
@@ -134,7 +135,7 @@ content, and we disable the accounts of repeat infringers.
 ## 10. Ending your account
 
 - You can delete your account at any time in **Settings → Delete account**, or as described at
-  [{{SITE}}/delete-account]({{SITE}}/delete-account).
+  [https://bolasnetworking.com/delete-account](https://bolasnetworking.com/delete-account).
 - We may suspend or delete your account as described in section 3.
 - Sections that by their nature should survive (for example 4, 5, 11–15) survive after your
   account ends.
@@ -169,13 +170,16 @@ conduct toward other users, or your breaking these Terms or the law.
 
 ## 15. Disputes and governing law
 
-{{GOVERNING_LAW}}
+These Terms, and any dispute between you and Bolas, are governed by the laws of the State of Idaho
+and applicable U.S. federal law, without regard to conflict-of-law rules.
 
-{{DISPUTE_RESOLUTION}}
+Before filing a claim, please email us at admin@bolasnetworking.com and give us 30 days to try to
+resolve it informally. If we can't, any lawsuit must be brought only in the state or federal courts
+located in Ada County, Idaho, and you and Bolas both agree to those courts' personal jurisdiction.
+Either of us may instead bring an individual claim in small claims court if it qualifies.
 
-<!-- For the lawyer: choose the governing state, the court venue or an arbitration clause (with
-opt-out and small-claims carve-out, if arbitration), and any class-action waiver. Don't publish
-until filled. -->
+<!-- For the lawyer: Zane chose Idaho law and Ada County courts with no arbitration (2026-09-30).
+Confirm, or replace with an arbitration clause and class-action waiver. -->
 
 ## 16. App stores and maps
 
@@ -204,5 +208,5 @@ can transfer them as part of a merger, acquisition, or sale of assets.
 
 ## 19. Contact
 
-{{LEGAL_ENTITY_NAME}}, {{MAILING_ADDRESS}}
-{{CONTACT_EMAIL}}
+Bolas Networking LLC, {{MAILING_ADDRESS}}
+admin@bolasnetworking.com

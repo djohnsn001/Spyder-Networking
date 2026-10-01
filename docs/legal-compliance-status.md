@@ -65,7 +65,7 @@ From the plan's QA table:
 | Where | Placeholder |
 |---|---|
 | `config.ts` + `_current_terms_version()` | `TERMS_VERSION` `'2026-10-01'` is a placeholder date; set it to the real effective date **in both** (new migration for the DB) |
-| `docs/legal/drafts/*` | `{{LEGAL_ENTITY_NAME}}`, `{{CONTACT_EMAIL}}`, `{{SUPPORT_EMAIL}}`, `{{MAILING_ADDRESS}}`, `{{SITE}}`, `{{EFFECTIVE_DATE}}`, `{{DMCA_AGENT}}`, `{{GOVERNING_LAW}}`, `{{DISPUTE_RESOLUTION}}` |
+| `docs/legal/drafts/*` | `{{MAILING_ADDRESS}}` (Privacy, Terms, DMCA agent) and `{{EFFECTIVE_DATE}}` (set on publish day, with `TERMS_VERSION`). The rest were filled 2026-09-30; Terms §15 = Idaho law, Ada County courts |
 | `docs/legal/store-submission.md` | demo account emails/passwords (two accounts) |
 | `docs/legal/email-templates.md` | `{{SUPPORT_EMAIL}}`, `{{LEGAL_ENTITY_NAME}}`, Site URL |
 

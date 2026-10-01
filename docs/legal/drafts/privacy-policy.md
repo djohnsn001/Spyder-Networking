@@ -4,8 +4,7 @@
 Notes for reviewers (delete before publishing):
 - Every fact here comes from docs/legal/data-inventory.md. If the app changes, update the
   inventory first, then this page.
-- Placeholders: {{LEGAL_ENTITY_NAME}}, {{CONTACT_EMAIL}}, {{SUPPORT_EMAIL}}, {{MAILING_ADDRESS}},
-  {{SITE}}, {{EFFECTIVE_DATE}} (should match TERMS_VERSION / _current_terms_version, now 2026-10-01).
+- Placeholders still open: {{MAILING_ADDRESS}}, {{EFFECTIVE_DATE}} (should match TERMS_VERSION / _current_terms_version, now 2026-10-01).
 - Launch area: United States only (Zane, 2026-09-28). No GDPR section. If Bolas launches outside
   the U.S., this policy needs a lawyer's rewrite first.
 - State privacy laws (e.g. California's CCPA/CPRA) mostly apply above size thresholds Bolas doesn't
@@ -19,7 +18,7 @@ Notes for reviewers (delete before publishing):
 
 Bolas is a networking app for people who want to start things. This policy explains what
 information Bolas collects, why, who can see it, how long we keep it, and the choices you have.
-We've tried to write it in plain language. If anything is unclear, email us at {{CONTACT_EMAIL}}.
+We've tried to write it in plain language. If anything is unclear, email us at admin@bolasnetworking.com.
 
 **The short version**
 
@@ -34,7 +33,7 @@ We've tried to write it in plain language. If anything is unclear, email us at {
 
 ## 1. Who we are
 
-Bolas is operated by {{LEGAL_ENTITY_NAME}} ("Bolas," "we," "us"), {{MAILING_ADDRESS}}. Bolas is
+Bolas is operated by Bolas Networking LLC ("Bolas," "we," "us"), {{MAILING_ADDRESS}}. Bolas is
 offered in the United States.
 
 ## 2. What we collect and why
@@ -157,9 +156,9 @@ You can, at any time:
 - **Delete your account**, in **Settings → Delete account**. This permanently deletes your account,
   profile, photos, connections, conversations (for both people), events, and location, and
   unlinks your reports from you. It can't be undone. If you no longer have the app, see
-  [{{SITE}}/delete-account]({{SITE}}/delete-account).
+  [https://bolasnetworking.com/delete-account](https://bolasnetworking.com/delete-account).
 - **Ask for a copy of your information, or ask us to correct or delete it,** by emailing
-  {{CONTACT_EMAIL}} from the email address on your account. We'll respond within 30 days. We may
+  admin@bolasnetworking.com from the email address on your account. We'll respond within 30 days. We may
   need to confirm it's really you first.
 
 We won't treat you differently for using these rights.
@@ -172,7 +171,7 @@ Track" signal to turn off.
 Bolas is only for people **18 and older**. Everyone must confirm they're 18 or older to sign up.
 We don't knowingly collect information from anyone under 18. If we learn that a user is under 18,
 we'll delete their account. If you believe someone under 18 is using Bolas, report their profile
-in the app or email {{CONTACT_EMAIL}}.
+in the app or email admin@bolasnetworking.com.
 
 ## 9. Security
 
@@ -188,5 +187,5 @@ we'll tell you in the app, and ask you to agree again when needed, before they a
 
 ## 11. Contact us
 
-Questions or requests: **{{CONTACT_EMAIL}}**
-{{LEGAL_ENTITY_NAME}}, {{MAILING_ADDRESS}}
+Questions or requests: **admin@bolasnetworking.com**
+Bolas Networking LLC, {{MAILING_ADDRESS}}
