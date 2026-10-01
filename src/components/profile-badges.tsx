@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 
-import { BadgeChip } from '@/components/badge-chip';
+import { BadgeEmblem } from '@/components/badge-emblem';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BorderWidth, Spacing } from '@/constants/theme';
@@ -38,13 +38,38 @@ export function useProfileBadges(userId: string | undefined) {
   return { definitions, badges, reload };
 }
 
+// A badge's emblem; tapping it opens the detail sheet.
+function EmblemButton({
+  definition,
+  badge,
+  size,
+  onPress,
+}: {
+  definition: BadgeDefinition | undefined;
+  badge: EarnedBadge;
+  size: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${badgeLabel(definition, badge)} badge`}
+      accessibilityHint="Shows what this badge is for"
+      hitSlop={4}
+      style={({ pressed }) => [pressed && styles.pressed]}>
+      <BadgeEmblem badgeKey={badge.badge_key} definition={definition} size={size} />
+    </Pressable>
+  );
+}
+
 function featuredOf(badges: EarnedBadge[]) {
   return badges
     .filter((badge) => badge.featured_rank != null)
     .sort((a, b) => (a.featured_rank ?? 0) - (b.featured_rank ?? 0));
 }
 
-// Up to 3 chosen badges, shown big near the top of the profile.
+// Up to 3 chosen badges' emblems, shown bigger near the top of the profile.
 export function FeaturedBadges({
   definitions,
   badges,
@@ -59,11 +84,11 @@ export function FeaturedBadges({
   return (
     <View style={styles.featuredRow}>
       {featured.map((badge) => (
-        <BadgeChip
+        <EmblemButton
           key={badge.badge_key}
           definition={definitions.get(badge.badge_key)}
           badge={badge}
-          size="large"
+          size={52}
           onPress={() => onPressBadge(badge)}
         />
       ))}
@@ -98,9 +123,9 @@ export function BadgesSection({
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <ThemedText type="smallBold">Badges</ThemedText>
-          {isOwn && badges.length > 0 ? (
+          {badges.length > 0 ? (
             <ThemedText type="small" themeColor="textSecondary">
-              Tap one to feature it
+              {isOwn ? 'Tap to view or feature' : 'Tap for details'}
             </ThemedText>
           ) : null}
         </View>
@@ -113,10 +138,11 @@ export function BadgesSection({
         ) : (
           <View style={styles.grid}>
             {ordered.map((badge) => (
-              <BadgeChip
+              <EmblemButton
                 key={badge.badge_key}
                 definition={definitions.get(badge.badge_key)}
                 badge={badge}
+                size={44}
                 onPress={() => onSelect(badge)}
               />
             ))}
@@ -187,7 +213,7 @@ function BadgeDetailSheet({
         <Pressable style={styles.dismissArea} onPress={onClose} accessibilityLabel="Close badge" />
         {badge ? (
           <ThemedView type="overlay" style={[styles.sheet, { borderColor: theme.overlayBorder }]}>
-            <ThemedText style={styles.bigIcon}>{definition?.icon ?? '🏅'}</ThemedText>
+            <BadgeEmblem badgeKey={badge.badge_key} definition={definition} size={96} />
             <ThemedText type="subtitle" style={styles.center} accessibilityRole="header">
               {badgeLabel(definition, badge)}
             </ThemedText>
@@ -267,7 +293,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   backdrop: {
     flex: 1,
@@ -289,10 +315,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Spacing.four,
     borderWidth: BorderWidth.thin,
     borderBottomWidth: 0,
-  },
-  bigIcon: {
-    fontSize: 48,
-    lineHeight: 60,
   },
   center: {
     textAlign: 'center',
