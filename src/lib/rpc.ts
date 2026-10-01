@@ -32,6 +32,11 @@ export function friendlyRpcError(error: unknown): string {
     if (error.serverMessage === 'mfa_required') {
       return 'Enter your two-step verification code to continue.';
     }
+    // discover_profiles refuses Looking For filters without Premium
+    // (20260930020000). The app hides them first, so this is a fallback.
+    if (error.serverMessage === 'premium_required') {
+      return 'Filtering by Looking For tags is a Premium feature.';
+    }
     if (error.kind === 'offline') return "You're offline. Check your connection and try again.";
     if (error.kind === 'timeout') return 'That took too long. Check your connection and try again.';
   }
