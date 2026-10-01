@@ -1,17 +1,17 @@
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { Alert, Linking } from 'react-native';
 
-// Placeholders: Zane fills these in. Every legal screen and draft reads from
+// Real legal details. Every legal screen and draft reads from
 // here. Never invent real values (legal name, emails, site).
 export const LEGAL = {
-  ENTITY_NAME: '{{LEGAL_ENTITY_NAME}}', // e.g. "Bolas LLC" once formed
-  CONTACT_EMAIL: '{{CONTACT_EMAIL}}',
-  SUPPORT_EMAIL: '{{SUPPORT_EMAIL}}',
-  PRIVACY_URL: '{{SITE}}/privacy',
-  TERMS_URL: '{{SITE}}/terms',
-  GUIDELINES_URL: '{{SITE}}/guidelines',
-  SAFETY_URL: '{{SITE}}/safety',
-  DELETE_ACCOUNT_URL: '{{SITE}}/delete-account',
+  ENTITY_NAME: 'Bolas Networking LLC',
+  CONTACT_EMAIL: 'admin@bolasnetworking.com',
+  SUPPORT_EMAIL: 'admin@bolasnetworking.com',
+  PRIVACY_URL: 'https://bolasnetworking.com/privacy',
+  TERMS_URL: 'https://bolasnetworking.com/terms',
+  GUIDELINES_URL: 'https://bolasnetworking.com/guidelines',
+  SAFETY_URL: 'https://bolasnetworking.com/safety',
+  DELETE_ACCOUNT_URL: 'https://bolasnetworking.com/delete-account',
   // Must match public._current_terms_version() (migration
   // 20260928010000_legal_consent.sql). Bump both together.
   TERMS_VERSION: '2026-10-01',

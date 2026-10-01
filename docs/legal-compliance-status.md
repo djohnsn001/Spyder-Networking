@@ -59,9 +59,11 @@ From the plan's QA table:
 
 ## Placeholders still unfilled
 
+`src/lib/legal/config.ts` was filled in on 2026-09-30: Bolas Networking LLC, admin@bolasnetworking.com
+(contact and support), and https://bolasnetworking.com for the 5 page URLs.
+
 | Where | Placeholder |
 |---|---|
-| `src/lib/legal/config.ts` | `ENTITY_NAME`, `CONTACT_EMAIL`, `SUPPORT_EMAIL`, and `{{SITE}}` in the 5 URLs |
 | `config.ts` + `_current_terms_version()` | `TERMS_VERSION` `'2026-10-01'` is a placeholder date; set it to the real effective date **in both** (new migration for the DB) |
 | `docs/legal/drafts/*` | `{{LEGAL_ENTITY_NAME}}`, `{{CONTACT_EMAIL}}`, `{{SUPPORT_EMAIL}}`, `{{MAILING_ADDRESS}}`, `{{SITE}}`, `{{EFFECTIVE_DATE}}`, `{{DMCA_AGENT}}`, `{{GOVERNING_LAW}}`, `{{DISPUTE_RESOLUTION}}` |
 | `docs/legal/store-submission.md` | demo account emails/passwords (two accounts) |
