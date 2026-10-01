@@ -2162,15 +2162,16 @@ begin
     reset role;
     select array_agg(a.attname::text order by a.attnum) into cols
     from pg_proc pr, unnest(pr.proargnames, pr.proargmodes) with ordinality as a(attname, mode, attnum)
-    where pr.oid = 'public.discover_profiles(text, integer, text, text[], text[], text)'::regprocedure and a.mode = 't';
+    where pr.oid = 'public.discover_profiles(text, integer, text, text[], text[], text, text[])'::regprocedure and a.mode = 't';
     ok := n = 2
           and cols = array['id', 'username', 'full_name', 'avatar_url', 'bio', 'interests',
-                           'business_stage', 'city', 'cursor']
-          and not has_function_privilege('anon', 'public.discover_profiles(text, integer, text, text[], text[], text)', 'execute')
-          and has_function_privilege('authenticated', 'public.discover_profiles(text, integer, text, text[], text[], text)', 'execute')
-          and to_regprocedure('public.discover_profiles(text, integer, text)') is null;
+                           'business_stage', 'city', 'looking_for', 'tags_updated_at', 'cursor']
+          and not has_function_privilege('anon', 'public.discover_profiles(text, integer, text, text[], text[], text, text[])', 'execute')
+          and has_function_privilege('authenticated', 'public.discover_profiles(text, integer, text, text[], text[], text, text[])', 'execute')
+          and to_regprocedure('public.discover_profiles(text, integer, text)') is null
+          and to_regprocedure('public.discover_profiles(text, integer, text, text[], text[], text)') is null;
     report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
-      || '  V10 anon + no-user refused (' || n || '/2); returns only the 9 Discover columns; old overload gone';
+      || '  V10 anon + no-user refused (' || n || '/2); returns only the 11 Discover columns; old overloads gone';
     if not ok then fails := fails + 1; end if;
 
     -- V11: filters (20260930010000_discover_filters.sql). Stage, interests
