@@ -1,5 +1,6 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 
@@ -12,6 +13,7 @@ import {
   redeemConnectToken,
   type InPersonMatch,
 } from '@/lib/connect/api';
+import { parseCheckinUrl } from '@/lib/checkin';
 import { parseConnectUrl } from '@/lib/connect/parse-connect-url';
 import type { ConnectLocation } from '@/lib/connect/use-connect-location';
 
@@ -76,6 +78,16 @@ export function ScanPanel({
     if (busyRef.current) return;
     busyRef.current = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // An event's check-in code: hand it to the check-in screen (which asks
+    // first and sends location). The pause stops the camera, which still
+    // sees the code, from opening it again.
+    const checkinToken = parseCheckinUrl(data);
+    if (checkinToken) {
+      router.push(`/checkin/${checkinToken}`);
+      resumeSoon('Opening check-in…');
+      return;
+    }
 
     const token = parseConnectUrl(data);
     if (!token) {

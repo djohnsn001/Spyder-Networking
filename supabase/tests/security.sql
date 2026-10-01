@@ -1994,6 +1994,11 @@ begin
     update public.profiles set interests = array['Fintech'], full_name = 'Zebra 100% Farms'
     where id = others[7];
     update public.profiles set interests = array['SaaS'] where id = others[8];
+    -- For the filter tests (V11-V12).
+    update public.profiles set business_stage = 'launched', city = 'Austin, TX' where id = others[9];
+    update public.profiles set business_stage = 'launched', city = 'Boston' where id = others[10];
+    update public.profiles set business_stage = 'launched', city = 'Austin, TX', interests = array['Fintech']
+    where id in (i_blocked, blocked_me, suspended);
 
     insert into public.user_blocks (blocker_id, blocked_id) values
       (me, i_blocked),
@@ -2038,7 +2043,7 @@ begin
       select array_agg(d.id order by d.ord), (array_agg(d.cursor order by d.ord desc))[1]
         into page_ids, prev_cursor
       from public.discover_profiles(cur, 30) with ordinality as d(id, username, full_name,
-        avatar_url, bio, interests, business_stage, city, cursor, ord);
+        avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
       exit when page_ids is null;
       seen := seen || page_ids;
       cur := prev_cursor;
@@ -2064,7 +2069,7 @@ begin
     select array_agg(d.id order by d.ord), (array_agg(d.cursor order by d.ord desc))[1]
       into page_ids, cur
     from public.discover_profiles(null, 10) with ordinality as d(id, username, full_name,
-      avatar_url, bio, interests, business_stage, city, cursor, ord);
+      avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
     reset role;
     insert into auth.users (id, email, aud, role) values
       (late, late || '@test.bolas.invalid', 'authenticated', 'authenticated');
@@ -2074,7 +2079,7 @@ begin
     perform set_config('role', 'authenticated', true);
     select array_agg(d.id order by d.ord) into seen
     from public.discover_profiles(cur, 10) with ordinality as d(id, username, full_name,
-      avatar_url, bio, interests, business_stage, city, cursor, ord);
+      avatar_url, bio, interests, business_stage, city, looking_for, tags_updated_at, cursor, ord);
     reset role;
     ok := page_ids = array(select others[k] from generate_series(35, 26, -1) k)
           and seen = array(select others[k] from generate_series(25, 16, -1) k)
@@ -2157,14 +2162,53 @@ begin
     reset role;
     select array_agg(a.attname::text order by a.attnum) into cols
     from pg_proc pr, unnest(pr.proargnames, pr.proargmodes) with ordinality as a(attname, mode, attnum)
-    where pr.oid = 'public.discover_profiles(text, integer, text)'::regprocedure and a.mode = 't';
+    where pr.oid = 'public.discover_profiles(text, integer, text, text[], text[], text)'::regprocedure and a.mode = 't';
     ok := n = 2
           and cols = array['id', 'username', 'full_name', 'avatar_url', 'bio', 'interests',
                            'business_stage', 'city', 'cursor']
-          and not has_function_privilege('anon', 'public.discover_profiles(text, integer, text)', 'execute')
-          and has_function_privilege('authenticated', 'public.discover_profiles(text, integer, text)', 'execute');
+          and not has_function_privilege('anon', 'public.discover_profiles(text, integer, text, text[], text[], text)', 'execute')
+          and has_function_privilege('authenticated', 'public.discover_profiles(text, integer, text, text[], text[], text)', 'execute')
+          and to_regprocedure('public.discover_profiles(text, integer, text)') is null;
     report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
-      || '  V10 anon + no-user refused (' || n || '/2); returns only the 9 Discover columns';
+      || '  V10 anon + no-user refused (' || n || '/2); returns only the 9 Discover columns; old overload gone';
+    if not ok then fails := fails + 1; end if;
+
+    -- V11: filters (20260930010000_discover_filters.sql). Stage, interests
+    -- (any of), city (contains, case-insensitive), combined, and empty
+    -- filters meaning "no filter".
+    perform set_config('request.jwt.claims', json_build_object('sub', me, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    select array_agg(d.id order by d.id) into seen
+    from public.discover_profiles(null, 30, null, array['launched']) d where d.id = any (visible);
+    ok := seen = (select array_agg(x order by x) from unnest(array[others[9], others[10]]) x);
+    select array_agg(d.id order by d.id) into seen
+    from public.discover_profiles(null, 30, null, null, array['Fintech', 'SaaS']) d where d.id = any (visible);
+    ok := ok and seen = (select array_agg(x order by x) from unnest(array[others[7], others[8]]) x);
+    select array_agg(d.id) into seen
+    from public.discover_profiles(null, 30, null, null, null, '  AUS ') d where d.id = any (visible);
+    ok := ok and seen = array[others[9]];
+    select array_agg(d.id) into seen
+    from public.discover_profiles(null, 30, null, array['launched'], null, 'bos') d where d.id = any (visible);
+    ok := ok and seen = array[others[10]];
+    select count(*) into n from public.discover_profiles(null, 30, null, '{}', '{}', '   ');
+    select count(*) into n2 from public.discover_profiles(null, 30, null, null, null, '%') d where d.id = any (visible);
+    reset role;
+    ok := ok and n = 30 and n2 = 0;
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  V11 filters: stage, interests (any), city contains, combined; empty = no filter; "%" literal';
+    if not ok then fails := fails + 1; end if;
+
+    -- V12 (attack): filters matching only blocked (both ways) / suspended
+    -- users return none of them, and an oversized filter array is harmless.
+    perform set_config('role', 'authenticated', true);
+    select array_agg(d.id) into seen
+    from public.discover_profiles(null, 30, null, array['launched'], array['Fintech'], 'austin') d;
+    select count(*) into n from public.discover_profiles(null, 30, null, array_fill('nope'::text, array[10000]),
+      array_fill('nope'::text, array[10000]));
+    reset role;
+    ok := not (coalesce(seen, '{}') && array[i_blocked, blocked_me, suspended]) and n = 0;
+    report := report || E'\n' || case when ok then 'PASS' else 'FAIL' end
+      || '  V12 filters never return blocked / suspended users; 10000-item filter arrays return 0 rows';
     if not ok then fails := fails + 1; end if;
   end;
   -- #####################################################################

@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { BadgeToastProvider } from '@/lib/badge-toasts';
+import { takePendingCheckinToken } from '@/lib/checkin';
 import { takePendingConnectToken } from '@/lib/connect/pending-link';
 import { ThemePreferenceProvider, useThemePreference } from '@/lib/theme-preference';
 import { UnreadMessagesProvider } from '@/lib/unread-messages';
@@ -25,9 +27,15 @@ function RootNavigator() {
   // profile setup finished) gets redeemed as soon as the app is usable.
   useEffect(() => {
     if (isLoading || !session || !isReady) return;
-    if (pathname.startsWith('/connect/')) return;
+    if (pathname.startsWith('/connect/') || pathname.startsWith('/checkin/')) return;
     const token = takePendingConnectToken();
-    if (token) router.push(`/connect/${token}`);
+    if (token) {
+      router.push(`/connect/${token}`);
+      return;
+    }
+    // Same for an event check-in link.
+    const checkinToken = takePendingCheckinToken();
+    if (checkinToken) router.push(`/checkin/${checkinToken}`);
   }, [isLoading, session, isReady, pathname]);
 
   // The splash overlay covers the screen until it finishes hiding, so
@@ -59,6 +67,7 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-message" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="premium" options={{ presentation: 'modal' }} />
           {/* The create/edit forms are tall and scroll, so they're regular
               modals like new-message. The detail view is a bottom sheet sized
               to its content — on iOS a formSheet's content has no fixed
@@ -74,6 +83,8 @@ function RootNavigator() {
           />
           <Stack.Screen name="event/[id]/edit" options={{ presentation: 'modal' }} />
           <Stack.Screen name="event/[id]/report" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="event/[id]/checkin" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="checkin/[token]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="connect/index" options={{ presentation: 'modal' }} />
           <Stack.Screen name="connect/[token]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="user/[id]" options={{ headerShown: true, headerTitle: '' }} />
@@ -128,7 +139,9 @@ function RootLayoutThemed() {
       <AnimatedSplashOverlay />
       <AuthProvider>
         <UnreadMessagesProvider>
-          <RootNavigator />
+          <BadgeToastProvider>
+            <RootNavigator />
+          </BadgeToastProvider>
         </UnreadMessagesProvider>
       </AuthProvider>
     </ThemeProvider>

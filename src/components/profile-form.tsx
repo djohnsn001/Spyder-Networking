@@ -19,6 +19,13 @@ import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
+import { useBadgeToasts } from '@/lib/badge-toasts';
+import {
+  type LookingForTag,
+  LookingForLimit,
+  LookingForTags,
+  normalizeLookingFor,
+} from '@/lib/looking-for';
 import {
   BioLimit,
   BusinessStages,
@@ -43,6 +50,7 @@ const ConstraintMessages: Record<string, string> = {
   profiles_full_name_length: `Full name can be at most ${FullNameLimit} characters.`,
   profiles_city_length: `City can be at most ${CityLimit} characters.`,
   profiles_interests_valid: `Pick up to ${InterestLimit} interests from the list.`,
+  profiles_looking_for_valid: `Pick up to ${LookingForLimit} "Looking for" tags from the list.`,
 };
 
 type ProfileFormProps = {
@@ -62,6 +70,7 @@ export function ProfileForm({
 }: ProfileFormProps) {
   const theme = useTheme();
   const { session, refreshProfile } = useAuth();
+  const { checkForNewBadges } = useBadgeToasts();
 
   const [username, setUsername] = useState(initialProfile?.username ?? '');
   const [fullName, setFullName] = useState(initialProfile?.full_name ?? '');
@@ -72,6 +81,9 @@ export function ProfileForm({
     initialProfile?.business_stage ?? null,
   );
   const [interests, setInterests] = useState<string[]>(initialProfile?.interests ?? []);
+  const [lookingFor, setLookingFor] = useState<LookingForTag[]>(
+    normalizeLookingFor(initialProfile?.looking_for),
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -125,6 +137,15 @@ export function ProfileForm({
     );
   }
 
+  // At the limit, other tags are disabled until one is removed.
+  function toggleLookingFor(tag: LookingForTag) {
+    setLookingFor((current) => {
+      if (current.includes(tag)) return current.filter((item) => item !== tag);
+      if (current.length >= LookingForLimit) return current;
+      return normalizeLookingFor([...current, tag]);
+    });
+  }
+
   async function handleSubmit() {
     setErrorMessage(null);
 
@@ -154,6 +175,11 @@ export function ProfileForm({
       setErrorMessage(ConstraintMessages.profiles_interests_valid);
       return;
     }
+    const validLookingFor = normalizeLookingFor(lookingFor);
+    if (validLookingFor.length > LookingForLimit) {
+      setErrorMessage(ConstraintMessages.profiles_looking_for_valid);
+      return;
+    }
 
     if (!session) return;
 
@@ -180,6 +206,8 @@ export function ProfileForm({
           city: trimmedCity || null,
           business_stage: businessStage,
           interests: validInterests,
+          // The server stamps tags_updated_at only if these actually changed.
+          looking_for: validLookingFor,
         })
         .eq('id', session.user.id);
 
@@ -214,6 +242,9 @@ export function ProfileForm({
 
       await refreshProfile();
       onSaved();
+      // Completing the profile hands out a member number (Founder / Early
+      // Member). Checked after closing, so the toast isn't behind the form.
+      checkForNewBadges();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
@@ -351,6 +382,47 @@ export function ProfileForm({
               </View>
 
               <View style={styles.field}>
+                <View style={styles.fieldHeaderRow}>
+                  <ThemedText type="smallBold">Looking for</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {lookingFor.length}/{LookingForLimit}
+                  </ThemedText>
+                </View>
+                <ThemedText type="small" themeColor="textSecondary">
+                  What you want from the network right now. Shown on your profile and used to
+                  suggest people in Discover.
+                </ThemedText>
+                <View style={styles.pillRow}>
+                  {LookingForTags.map((tag) => {
+                    const selected = lookingFor.includes(tag.key);
+                    const atLimit = !selected && lookingFor.length >= LookingForLimit;
+                    return (
+                      <Pressable
+                        key={tag.key}
+                        onPress={() => toggleLookingFor(tag.key)}
+                        disabled={atLimit}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected, disabled: atLimit }}
+                        style={({ pressed }) => [
+                          styles.pill,
+                          {
+                            backgroundColor: selected ? theme.secondaryAccent : theme.backgroundSelected,
+                          },
+                          atLimit && styles.pillDisabled,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText
+                          type="small"
+                          themeColor={selected ? 'onSecondaryAccent' : 'text'}>
+                          {tag.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.field}>
                 <ThemedText type="smallBold">Interests</ThemedText>
                 <View style={styles.pillRow}>
                   {InterestOptions.map((interest) => {
@@ -473,6 +545,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  pillDisabled: {
+    opacity: 0.45,
   },
   errorText: {
     textAlign: 'center',
