@@ -12,12 +12,19 @@ import { Animated, AppState, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 
+import { BadgeEmblem } from '@/components/badge-emblem';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BorderWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
-import { badgeLabel, fetchBadgeDefinitions, fetchUnseenBadges, markBadgesSeen } from '@/lib/badges';
+import {
+  type BadgeDefinition,
+  badgeLabel,
+  fetchBadgeDefinitions,
+  fetchUnseenBadges,
+  markBadgesSeen,
+} from '@/lib/badges';
 
 // "You earned a badge" toasts. Badges are awarded by the server (a trigger,
 // a check-in), so the app asks for unseen ones: on sign-in, when the app
@@ -30,7 +37,7 @@ const SHOW_MS = 3500;
 // First check after sign-in, once the app has settled.
 const FIRST_CHECK_MS = 1500;
 
-type Toast = { key: string; icon: string; label: string };
+type Toast = { key: string; definition: BadgeDefinition | undefined; label: string };
 
 const BadgeToastContext = createContext<{ checkForNewBadges: () => void }>({
   checkForNewBadges: () => {},
@@ -61,7 +68,7 @@ export function BadgeToastProvider({ children }: { children: ReactNode }) {
           const definition = definitions.get(badge.badge_key);
           return {
             key: badge.badge_key,
-            icon: definition?.icon ?? '🏅',
+            definition,
             label: badgeLabel(definition, badge),
           };
         }),
@@ -153,7 +160,7 @@ function BadgeToast({ toast, onDone }: { toast: Toast; onDone: () => void }) {
         <ThemedView
           type="overlay"
           style={[styles.toast, { borderColor: theme.overlayBorder, shadowColor: theme.shadow }]}>
-          <ThemedText style={styles.icon}>{toast.icon}</ThemedText>
+          <BadgeEmblem badgeKey={toast.key} definition={toast.definition} size={32} />
           <ThemedText type="small" themeColor="textSecondary">
             New badge
           </ThemedText>
@@ -184,9 +191,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-  },
-  icon: {
-    fontSize: 18,
-    lineHeight: 24,
   },
 });
