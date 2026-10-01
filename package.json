@@ -61,6 +61,7 @@
     "contrast": "node ./scripts/check-contrast.js",
     "check-env": "node ./scripts/check-env.js",
     "check:interests": "node ./scripts/check-interest-options.js",
+    "check:looking-for": "node ./scripts/check-looking-for.js",
     "seed:map": "node ./scripts/seed-map-data.js",
     "seed:map:connections": "node ./scripts/add-seed-connections.js",
     "seed:map:locations": "node ./scripts/update-seed-locations.js",

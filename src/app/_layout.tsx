@@ -59,6 +59,7 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
           <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-message" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="premium" options={{ presentation: 'modal' }} />
           {/* The create/edit forms are tall and scroll, so they're regular
               modals like new-message. The detail view is a bottom sheet sized
               to its content — on iOS a formSheet's content has no fixed

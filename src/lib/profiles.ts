@@ -1,10 +1,13 @@
+import type { LookingForTag } from '@/lib/looking-for';
 import { callRpc } from '@/lib/rpc';
 import type { BusinessStage, DiscoverProfile } from '@/lib/types';
 
 // Column lists for profile reads, so screens only fetch what they show
 // (security item M8). They must match the types in types.ts.
+// OWN_PROFILE_COLUMNS is only used on get_my_profile(), so it can include
+// columns other people can't read (settings, tags, is_premium).
 export const OWN_PROFILE_COLUMNS =
-  'id, username, full_name, avatar_url, bio, interests, business_stage, city, notifications_enabled, location_sharing, created_at, updated_at';
+  'id, username, full_name, avatar_url, bio, interests, business_stage, city, notifications_enabled, location_sharing, looking_for, tags_updated_at, is_premium, created_at, updated_at';
 export const PUBLIC_PROFILE_COLUMNS =
   'id, username, full_name, avatar_url, bio, interests, business_stage, city';
 export const PROFILE_SUMMARY_COLUMNS = 'id, username, full_name, avatar_url';
@@ -13,18 +16,30 @@ export const CONNECTION_PROFILE_COLUMNS = 'id, username, full_name, avatar_url, 
 // The server never returns more than 30 per page, whatever we ask for.
 export const DISCOVER_PAGE_SIZE = 30;
 
-// Discover filters. Empty means "no filter". Interests match anyone with at
-// least one of them; city is a case-insensitive "contains".
+// Discover filters. Empty means "no filter". Interests and Looking For tags
+// match anyone with at least one of them; city is a case-insensitive
+// "contains". lookingFor is Premium-only: the server refuses it otherwise.
 export type DiscoverFilters = {
   stages: BusinessStage[];
   interests: string[];
   city: string;
+  lookingFor: LookingForTag[];
 };
 
-export const EMPTY_DISCOVER_FILTERS: DiscoverFilters = { stages: [], interests: [], city: '' };
+export const EMPTY_DISCOVER_FILTERS: DiscoverFilters = {
+  stages: [],
+  interests: [],
+  city: '',
+  lookingFor: [],
+};
 
 export function countActiveFilters(filters: DiscoverFilters) {
-  return filters.stages.length + filters.interests.length + (filters.city.trim() ? 1 : 0);
+  return (
+    filters.stages.length +
+    filters.interests.length +
+    filters.lookingFor.length +
+    (filters.city.trim() ? 1 : 0)
+  );
 }
 
 // One page of Discover, newest profiles first. Pass the last row's cursor
@@ -42,6 +57,7 @@ export async function fetchDiscoverPage(
     p_stages: filters.stages.length > 0 ? filters.stages : null,
     p_interests: filters.interests.length > 0 ? filters.interests : null,
     p_city: filters.city.trim() || null,
+    p_looking_for: filters.lookingFor.length > 0 ? filters.lookingFor : null,
   });
   return rows ?? [];
 }

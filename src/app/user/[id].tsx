@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/avatar';
 import { LevelChip } from '@/components/connect/level-chip';
 import { ConnectButton } from '@/components/connect-button';
+import { LookingForTags } from '@/components/looking-for-tags';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -19,6 +20,7 @@ import {
   removeConnection,
   sendConnectionRequest,
 } from '@/lib/connections';
+import { fetchLookingFor, type LookingForInfo } from '@/lib/looking-for';
 import { getOrStartDirectConversation } from '@/lib/messages';
 import { getBusinessStageLabel } from '@/lib/profile-options';
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/profiles';
@@ -33,6 +35,7 @@ export default function UserProfileScreen() {
   const myId = session?.user.id;
 
   const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [lookingFor, setLookingFor] = useState<LookingForInfo | null>(null);
   const [connections, setConnections] = useState<ConnectionRow[]>([]);
   const [mutualCount, setMutualCount] = useState(0);
   const [connectionCount, setConnectionCount] = useState(0);
@@ -44,17 +47,23 @@ export default function UserProfileScreen() {
   const load = useCallback(async () => {
     if (!id || !myId) return;
     setIsLoading(true);
-    const [profileResult, myConnections, mutuals, connectionTotal] = await Promise.all([
+    const [profileResult, myConnections, mutuals, connectionTotal, tags] = await Promise.all([
       supabase.from('profiles').select(PUBLIC_PROFILE_COLUMNS).eq('id', id).maybeSingle(),
       fetchMyConnections(myId),
       fetchMutualCount(id),
       fetchConnectionCount(id),
+      // Tags are extra: if they fail to load, the profile still shows.
+      fetchLookingFor(id).catch((error) => {
+        console.error('Failed to load Looking For tags', error);
+        return null;
+      }),
     ]);
     if (profileResult.error) {
       console.error('Failed to load profile', profileResult.error);
     } else {
       setProfile(profileResult.data);
     }
+    setLookingFor(tags);
     setConnections(myConnections);
     setMutualCount(mutuals);
     setConnectionCount(connectionTotal);
@@ -211,6 +220,8 @@ export default function UserProfileScreen() {
               ))}
             </View>
           ) : null}
+
+          <LookingForTags tags={lookingFor?.looking_for} updatedAt={lookingFor?.tags_updated_at} />
 
           {myId ? (
             <ConnectButton

@@ -11,6 +11,13 @@ export type Profile = {
   city: string | null;
   notifications_enabled: boolean;
   location_sharing: 'connections' | 'off';
+  // "Looking For" tags (src/lib/looking-for.ts). Public, but only readable
+  // through RPCs, not as table columns (20260930020000).
+  looking_for: string[];
+  // Server-stamped when the tags change or are confirmed; stale after 90 days.
+  tags_updated_at: string | null;
+  // Server-managed (later: in-app purchase). Only ever your own.
+  is_premium: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -28,9 +35,10 @@ export type ProfileSummary = Pick<Profile, 'id' | 'username' | 'full_name' | 'av
 // The connections list also shows city and stage.
 export type ConnectionProfile = ProfileSummary & Pick<Profile, 'city' | 'business_stage'>;
 
-// One row of discover_profiles(): a public profile plus the keyset cursor
-// to pass back for the next page.
-export type DiscoverProfile = PublicProfile & { cursor: string };
+// One row of discover_profiles(): a public profile, its Looking For tags,
+// and the keyset cursor to pass back for the next page.
+export type DiscoverProfile = PublicProfile &
+  Pick<Profile, 'looking_for' | 'tags_updated_at'> & { cursor: string };
 
 export type ConnectionRow = {
   id: string;
