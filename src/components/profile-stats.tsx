@@ -20,7 +20,8 @@ export function ProfileStatsRow({ stats, onPressInPerson }: ProfileStatsRowProps
   if (!stats) return null;
 
   const cells: Cell[] = [
-    { key: 'in_person', value: stats.in_person_connections, label: 'In-person connections' },
+    // "Ties": people you've met in person (the lines on the Web Map).
+    { key: 'in_person', value: stats.in_person_connections, label: 'Ties' },
     { key: 'attended', value: stats.events_attended, label: 'Events attended' },
     { key: 'hosted', value: stats.events_hosted, label: 'Events hosted' },
   ];
