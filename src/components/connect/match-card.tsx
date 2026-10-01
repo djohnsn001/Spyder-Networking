@@ -18,6 +18,7 @@ import { ThemedView } from '@/components/themed-view';
 import { AccentColor, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
+import { useBadgeToasts } from '@/lib/badge-toasts';
 import {
   friendlyConnectError,
   undoInPersonConnection,
@@ -64,6 +65,12 @@ export function MatchCard({
 
   const strand = useSharedValue(0);
   const ring = useSharedValue(1);
+
+  // A new in-person connection may have earned a badge (First Handshake,
+  // Connector...). Checked when the card closes, so the toast isn't hidden
+  // behind it.
+  const { checkForNewBadges } = useBadgeToasts();
+  useEffect(() => () => checkForNewBadges(), [checkForNewBadges]);
 
   useEffect(() => {
     void Haptics.notificationAsync(

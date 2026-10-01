@@ -5,13 +5,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { LookingForTags } from '@/components/looking-for-tags';
+import { BadgesSection, FeaturedBadges, useProfileBadges } from '@/components/profile-badges';
+import { ProfileStatsRow } from '@/components/profile-stats';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AccentColor, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import {
+  type EarnedBadge,
+  fetchProfileStats,
+  missingForMemberNumber,
+  type ProfileStats,
+} from '@/lib/badges';
+import {
   acceptConnectionRequest,
-  fetchConnectionCount,
   fetchPendingRequests,
   removeConnection,
   type PendingRequest,
@@ -25,20 +32,33 @@ export default function ProfileScreen() {
 
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
-  const [connectionCount, setConnectionCount] = useState(0);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [isConfirmingTags, setIsConfirmingTags] = useState(false);
   const [tagsError, setTagsError] = useState<string | null>(null);
+  const myId = session?.user.id;
+  const { definitions, badges, reload: reloadBadges } = useProfileBadges(myId);
+
+  const loadStats = useCallback(async () => {
+    if (!myId) return;
+    try {
+      setStats(await fetchProfileStats(myId));
+    } catch (error) {
+      if (__DEV__) console.warn('Failed to load stats', error);
+    }
+  }, [myId]);
 
   const loadRequests = useCallback(async () => {
-    if (!session) return;
-    setRequests(await fetchPendingRequests(session.user.id));
-    setConnectionCount(await fetchConnectionCount(session.user.id));
-  }, [session]);
+    if (!myId) return;
+    setRequests(await fetchPendingRequests(myId));
+  }, [myId]);
 
   useFocusEffect(
     useCallback(() => {
       void loadRequests();
-    }, [loadRequests]),
+      void loadStats();
+      void reloadBadges();
+    }, [loadRequests, loadStats, reloadBadges]),
   );
 
   async function handleAccept(connectionId: string) {
@@ -46,7 +66,7 @@ export default function ProfileScreen() {
     try {
       await acceptConnectionRequest(connectionId);
       setRequests((current) => current.filter((request) => request.connectionId !== connectionId));
-      if (session) setConnectionCount(await fetchConnectionCount(session.user.id));
+      void loadStats();
     } catch (error) {
       console.error('Failed to accept request', error);
     } finally {
@@ -83,6 +103,7 @@ export default function ProfileScreen() {
   const businessStageLabel = getBusinessStageLabel(profile?.business_stage ?? null);
   const hasTags = (profile?.looking_for?.length ?? 0) > 0;
   const tagsAreStale = hasTags && isLookingForStale(profile?.tags_updated_at);
+  const missingFields = missingForMemberNumber(profile);
 
   return (
     <ThemedView style={styles.container}>
@@ -111,14 +132,9 @@ export default function ProfileScreen() {
               </ThemedText>
             ) : null}
 
-            <Pressable
-              onPress={() => router.push('/connections')}
-              accessibilityRole="button"
-              accessibilityLabel="View connections">
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-                {connectionCount} connection{connectionCount === 1 ? '' : 's'}
-              </ThemedText>
-            </Pressable>
+            <FeaturedBadges definitions={definitions} badges={badges} onPressBadge={setSelectedBadge} />
+
+            <ProfileStatsRow stats={stats} onPressInPerson={() => router.push('/connections')} />
 
             {profile?.bio ? (
               <ThemedText type="default" style={styles.centerText}>
@@ -154,7 +170,44 @@ export default function ProfileScreen() {
                 </ThemedText>
               </Pressable>
             )}
+
+            <BadgesSection
+              definitions={definitions}
+              badges={badges}
+              isOwn
+              selected={selectedBadge}
+              onSelect={setSelectedBadge}
+              onChanged={() => void reloadBadges()}
+            />
           </ThemedView>
+
+          {missingFields.length > 0 ? (
+            <ThemedView type="backgroundElement" style={styles.staleCard}>
+              <ThemedText type="smallBold">Claim your member number</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Add {missingFields.slice(0, -1).join(', ')}
+                {missingFields.length > 1 ? ' and ' : ''}
+                {missingFields[missingFields.length - 1]} to finish your profile. Finished profiles get a
+                numbered member badge, and the first 200 are Founders.
+              </ThemedText>
+              <View style={styles.staleActions}>
+                <Pressable
+                  onPress={() => router.push('/edit-profile')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Finish your profile"
+                  style={({ pressed }) => [
+                    styles.smallButton,
+                    styles.staleButton,
+                    { backgroundColor: AccentColor },
+                    pressed && styles.buttonPressed,
+                  ]}>
+                  <ThemedText type="small" style={styles.buttonLabel}>
+                    Finish profile
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </ThemedView>
+          ) : null}
 
           {tagsAreStale ? (
             <ThemedView type="backgroundElement" style={styles.staleCard}>

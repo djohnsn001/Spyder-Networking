@@ -5,9 +5,9 @@ import type { BusinessStage, DiscoverProfile } from '@/lib/types';
 // Column lists for profile reads, so screens only fetch what they show
 // (security item M8). They must match the types in types.ts.
 // OWN_PROFILE_COLUMNS is only used on get_my_profile(), so it can include
-// columns other people can't read (settings, tags, is_premium).
+// columns other people can't read (settings, tags, premium, member number).
 export const OWN_PROFILE_COLUMNS =
-  'id, username, full_name, avatar_url, bio, interests, business_stage, city, notifications_enabled, location_sharing, looking_for, tags_updated_at, is_premium, created_at, updated_at';
+  'id, username, full_name, avatar_url, bio, interests, business_stage, city, notifications_enabled, location_sharing, looking_for, tags_updated_at, is_premium, profile_completed_at, member_number, lifetime_premium, created_at, updated_at';
 export const PUBLIC_PROFILE_COLUMNS =
   'id, username, full_name, avatar_url, bio, interests, business_stage, city';
 export const PROFILE_SUMMARY_COLUMNS = 'id, username, full_name, avatar_url';

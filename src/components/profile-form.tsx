@@ -19,6 +19,7 @@ import { AccentColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { removeOldAvatar, uploadAvatar } from '@/lib/avatar';
 import { useAuth } from '@/lib/auth';
+import { useBadgeToasts } from '@/lib/badge-toasts';
 import {
   type LookingForTag,
   LookingForLimit,
@@ -69,6 +70,7 @@ export function ProfileForm({
 }: ProfileFormProps) {
   const theme = useTheme();
   const { session, refreshProfile } = useAuth();
+  const { checkForNewBadges } = useBadgeToasts();
 
   const [username, setUsername] = useState(initialProfile?.username ?? '');
   const [fullName, setFullName] = useState(initialProfile?.full_name ?? '');
@@ -240,6 +242,9 @@ export function ProfileForm({
 
       await refreshProfile();
       onSaved();
+      // Completing the profile hands out a member number (Founder / Early
+      // Member). Checked after closing, so the toast isn't behind the form.
+      checkForNewBadges();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
