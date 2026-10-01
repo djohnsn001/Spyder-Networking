@@ -10,7 +10,9 @@ type ProfileStatsRowProps = {
   onPressInPerson?: () => void;
 };
 
-type Cell = { key: string; value: number; label: string };
+// spoken: what a screen reader says after the number (the short labels need
+// context out loud).
+type Cell = { key: string; value: number; label: string; spoken: string };
 
 // The Instagram-style numbers row: three equal stats, evenly centered.
 // Acquaintances only exist on your own profile (the server sends null for
@@ -21,9 +23,14 @@ export function ProfileStatsRow({ stats, onPressInPerson }: ProfileStatsRowProps
 
   const cells: Cell[] = [
     // "Ties": people you've met in person (the lines on the Web Map).
-    { key: 'in_person', value: stats.in_person_connections, label: 'Ties' },
-    { key: 'attended', value: stats.events_attended, label: 'Events attended' },
-    { key: 'hosted', value: stats.events_hosted, label: 'Events hosted' },
+    {
+      key: 'in_person',
+      value: stats.in_person_connections,
+      label: 'Ties',
+      spoken: 'ties, people met in person',
+    },
+    { key: 'attended', value: stats.events_attended, label: 'Attended', spoken: 'events attended' },
+    { key: 'hosted', value: stats.events_hosted, label: 'Hosted', spoken: 'events hosted' },
   ];
 
   return (
@@ -37,7 +44,7 @@ export function ProfileStatsRow({ stats, onPressInPerson }: ProfileStatsRowProps
               onPress={pressable ? onPressInPerson : undefined}
               disabled={!pressable}
               accessibilityRole={pressable ? 'button' : 'text'}
-              accessibilityLabel={`${cell.value} ${cell.label.toLowerCase()}`}
+              accessibilityLabel={`${cell.value} ${cell.spoken}`}
               style={({ pressed }) => [styles.cell, pressed && styles.pressed]}>
               <ThemedText style={styles.value}>{cell.value}</ThemedText>
               <ThemedText
