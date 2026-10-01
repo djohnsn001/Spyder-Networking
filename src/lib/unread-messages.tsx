@@ -11,8 +11,10 @@ type UnreadMessagesContextValue = {
 const UnreadMessagesContext = createContext<UnreadMessagesContextValue | undefined>(undefined);
 
 export function UnreadMessagesProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth();
-  const userId = session?.user.id ?? null;
+  const { session, needsMfaCode } = useAuth();
+  // Nothing to load until the two-step code is entered: the database
+  // refuses it (mfa_required). The effects below rerun once it is.
+  const userId = needsMfaCode ? null : (session?.user.id ?? null);
   // Remembered with whose count it is, so a different account (or signing
   // out) never shows the previous account's number.
   const [unread, setUnread] = useState<{ userId: string; count: number } | null>(null);

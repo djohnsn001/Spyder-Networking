@@ -70,6 +70,23 @@ async function fetchIsSuspended(userId: string): Promise<boolean> {
   return data !== null;
 }
 
+type AccountState = { profile: Profile | null; needsConsent: boolean; isSuspended: boolean };
+
+const EMPTY_ACCOUNT: AccountState = { profile: null, needsConsent: false, isSuspended: false };
+
+// Until the two-step code is entered, the database refuses every read
+// (mfa_required), so don't ask: it only logs errors. The code screen comes
+// first anyway, and this runs again once the code is verified.
+async function fetchAccount(userId: string, needsCode: boolean): Promise<AccountState> {
+  if (needsCode) return EMPTY_ACCOUNT;
+  const [profile, needsConsent, isSuspended] = await Promise.all([
+    fetchProfile(),
+    fetchNeedsConsent(),
+    fetchIsSuspended(userId),
+  ]);
+  return { profile, needsConsent, isSuspended };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -78,19 +95,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsMfaCode, setNeedsMfaCode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  function applyAccount(account: AccountState) {
+    setProfile(account.profile);
+    setNeedsConsent(account.needsConsent);
+    setIsSuspended(account.isSuspended);
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
       if (data.session) {
-        const [nextProfile, nextNeedsConsent, nextIsSuspended] = await Promise.all([
-          fetchProfile(),
-          fetchNeedsConsent(),
-          fetchIsSuspended(data.session.user.id),
-        ]);
-        setProfile(nextProfile);
-        setNeedsConsent(nextNeedsConsent);
-        setIsSuspended(nextIsSuspended);
-        setNeedsMfaCode(assuranceFromSession(data.session).needsCode);
+        const { needsCode } = assuranceFromSession(data.session);
+        applyAccount(await fetchAccount(data.session.user.id, needsCode));
+        setNeedsMfaCode(needsCode);
       }
       setIsLoading(false);
     });
@@ -101,23 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(newSession);
       if (newSession) {
         setIsLoading(true);
-        const [nextProfile, nextNeedsConsent, nextIsSuspended] = await Promise.all([
-          fetchProfile(),
-          fetchNeedsConsent(),
-          fetchIsSuspended(newSession.user.id),
-        ]);
-        setProfile(nextProfile);
-        setNeedsConsent(nextNeedsConsent);
-        setIsSuspended(nextIsSuspended);
         // Read from the session itself: calling supabase.auth.* inside this
         // callback can deadlock. MFA_CHALLENGE_VERIFIED lands here too, which
-        // lifts the code screen.
-        setNeedsMfaCode(assuranceFromSession(newSession).needsCode);
+        // loads the account and lifts the code screen.
+        const { needsCode } = assuranceFromSession(newSession);
+        applyAccount(await fetchAccount(newSession.user.id, needsCode));
+        setNeedsMfaCode(needsCode);
         setIsLoading(false);
       } else {
-        setProfile(null);
-        setNeedsConsent(false);
-        setIsSuspended(false);
+        applyAccount(EMPTY_ACCOUNT);
         setNeedsMfaCode(false);
       }
     });
@@ -137,7 +146,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function refreshMfa() {
     if (!session) return;
-    setNeedsMfaCode((await getAssurance()).needsCode);
+    const { needsCode } = await getAssurance();
+    // Code just entered: load the account before lifting the code screen,
+    // so the layout doesn't briefly see "no profile" and open onboarding.
+    if (!needsCode && needsMfaCode) {
+      applyAccount(await fetchAccount(session.user.id, false));
+    }
+    setNeedsMfaCode(needsCode);
   }
 
   return (
