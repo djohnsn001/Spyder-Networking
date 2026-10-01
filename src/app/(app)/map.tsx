@@ -22,6 +22,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BorderWidth, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
+import { fetchProfileStats } from '@/lib/badges';
 import { fetchEventsInRegion } from '@/lib/events';
 import {
   AVATAR_HALO_SIZE,
@@ -161,6 +162,10 @@ export default function MapScreen() {
   const [webState, setWebState] = useState<WebState>('idle');
   const [connections, setConnections] = useState<ConnectionLocation[]>([]);
   const [edges, setEdges] = useState<ConnectionEdge[]>([]);
+  // How many people you've met in person, including ones who keep their
+  // location hidden (so the empty map can say why it's empty). Null if the
+  // count couldn't be loaded.
+  const [tieCount, setTieCount] = useState<number | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<LocationCluster | null>(null);
   const [longitudeDelta, setLongitudeDelta] = useState(BOISE_REGION.longitudeDelta);
   const lastRegionUpdateRef = useRef(0);
@@ -260,18 +265,21 @@ export default function MapScreen() {
   const loadWeb = useCallback(async () => {
     setWebState('loading');
     try {
-      const [connectionsData, edgesData] = await Promise.all([
+      const [connectionsData, edgesData, stats] = await Promise.all([
         fetchConnectionLocations(),
         fetchConnectionEdges(),
+        // Only for the empty-map wording, so a failure doesn't fail the map.
+        myId ? fetchProfileStats(myId).catch(() => null) : null,
       ]);
       setConnections(connectionsData);
       setEdges(edgesData);
+      setTieCount(stats?.in_person_connections ?? null);
       setWebState('loaded');
     } catch (error) {
       console.error('Failed to load Web Map data', error);
       setWebState('error');
     }
-  }, []);
+  }, [myId]);
 
   // Only foreground permission — we never request background location.
   useFocusEffect(
@@ -627,7 +635,24 @@ export default function MapScreen() {
         </ThemedView>
       ) : null}
 
-      {webState === 'loaded' && otherConnections.length === 0 && !showHiddenBanner ? (
+      {webState === 'loaded' &&
+      otherConnections.length === 0 &&
+      !showHiddenBanner &&
+      (tieCount ?? 0) > 0 ? (
+        // You have ties, but none of them show themselves on the map.
+        <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            {tieCount === 1
+              ? "Your tie isn't sharing their location yet. They'll appear here once they turn on Show me on the map in Settings."
+              : `None of your ${tieCount} ties are sharing their location yet. They'll appear here once they turn on Show me on the map in Settings.`}
+          </ThemedText>
+        </ThemedView>
+      ) : null}
+
+      {webState === 'loaded' &&
+      otherConnections.length === 0 &&
+      !showHiddenBanner &&
+      (tieCount ?? 0) === 0 ? (
         <ThemedView type="overlay" style={[styles.banner, overlayStyle, bottomBannerPosition]}>
           <ThemedText type="small" themeColor="textSecondary">
             Your map grows when you meet people.
